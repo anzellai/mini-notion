@@ -1,0 +1,23 @@
+# Sky build artefacts
+sky-out/
+.skycache/
+.skydeps/
+sky.lock
+
+# Local SQLite databases (created at runtime by Std.Db)
+*.db
+*.db-shm
+*.db-wal
+
+# Distribution
+dist/
+
+# OS / editor cruft
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
+
+# Logs
+*.log

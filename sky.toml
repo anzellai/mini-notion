@@ -1,0 +1,19 @@
+name = "mini-notion"
+version = "0.1.0"
+entry = "src/Main.sky"
+
+[source]
+root = "src"
+
+[live]
+port = 8000
+input = "debounce"
+
+[database]
+driver = "sqlite"
+path = "mini-notion.db"
+
+[auth]
+method = "password"
+secret = "mini-notion-dev-secret-32-byte-key-change-me-in-prod"
+session_ttl = "168h"

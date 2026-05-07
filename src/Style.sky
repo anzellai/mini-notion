@@ -1,0 +1,281 @@
+module Style exposing (css, authCss)
+
+-- Style -- typed CSS via Std.Css. Every declaration goes through
+-- typed primitives (rule, property, px, hex, etc.), so the compiler
+-- catches typos and structural mistakes the same way it catches them
+-- in any other Sky module. There is no separate static asset, no
+-- build step, and no untyped string blobs in the view layer.
+
+import Sky.Core.Prelude exposing (..)
+import Std.Css exposing (..)
+
+
+-- ─── Design tokens ───────────────────────────────────────────────
+
+bg          = hex "f7f5f0"
+sidebarBg   = hex "efeae0"
+sidebarRow  = hex "e3dccb"
+sidebarSel  = hex "d9d0b8"
+border      = hex "d8d2c3"
+borderSoft  = hex "e6e1d2"
+ink         = hex "2c2a26"
+inkSoft     = hex "6b6558"
+inkFaint    = hex "9a9286"
+warm        = hex "f6c177"
+warmHover   = hex "f0b25c"
+deleteHot   = hex "c45a4a"
+
+savedBg     = hex "d6e7d2"
+savedFg     = hex "3f5a36"
+savingBg    = hex "f4ecd2"
+savingFg    = hex "6b5a26"
+errorBg     = hex "f4d4cf"
+errorFg     = hex "7a3a30"
+
+editorBg    = hex "faf8f3"
+placeholder = hex "b3ad9d"
+
+uiFont      = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+serifFont   = "ui-serif, Georgia, 'Iowan Old Style', Charter, serif"
+
+
+-- ─── App stylesheet ──────────────────────────────────────────────
+
+css : String
+css =
+    stylesheet
+        [ rule "*, *::before, *::after"
+            [ property "box-sizing" "border-box" ]
+
+        , rule "html, body"
+            [ margin "0"
+            , padding "0"
+            , height (pct 100)
+            ]
+
+        , rule "body"
+            [ fontFamily uiFont
+            , fontSize (px 15)
+            , lineHeight "1.55"
+            , color ink
+            , backgroundColor bg
+            ]
+
+        -- Layout
+        , rule ".app"
+            [ display "grid"
+            , gridTemplateColumns "260px 1fr"
+            , height (vh 100)
+            ]
+
+        -- Sidebar
+        , rule ".sidebar"
+            [ backgroundColor sidebarBg
+            , property "border-right" ("1px solid " ++ borderSoft)
+            , display "flex"
+            , flexDirection "column"
+            ]
+        , rule ".sidebar-header"
+            [ display "flex"
+            , alignItems "center"
+            , justifyContent "space-between"
+            , padding2 (px 14) (px 16)
+            , borderBottom ("1px solid " ++ border)
+            ]
+        , rule ".sidebar-title"
+            [ fontWeight "600"
+            , fontSize (px 13)
+            , textTransform "uppercase"
+            -- Std.Css's letterSpacing strips fractional em values
+            -- ("0.06em" -> "6em"), so use the property fallback to
+            -- preserve the literal value.
+            , property "letter-spacing" "0.06em"
+            , color inkSoft
+            ]
+
+        , rule ".btn-new"
+            [ backgroundColor warm
+            , property "border" "none"
+            , borderRadius (px 4)
+            , padding2 (px 4) (px 10)
+            , fontSize (px 13)
+            , fontWeight "600"
+            , color (hex "3f3a30")
+            , cursor "pointer"
+            ]
+        , rule ".btn-new:hover"
+            [ backgroundColor warmHover ]
+
+        , rule ".page-list"
+            [ property "list-style" "none"
+            , margin "0"
+            , padding2 (px 6) "0"
+            , flex "1"
+            , overflow "auto"
+            ]
+        , rule ".page-row"
+            [ display "flex"
+            , alignItems "center"
+            , padding2 "0" (px 8)
+            ]
+        , rule ".page-row .page-link"
+            [ flex "1"
+            , padding2 (px 6) (px 10)
+            , textDecoration "none"
+            , color ink
+            , borderRadius (px 4)
+            , fontSize (px 14)
+            , property "white-space" "nowrap"
+            , overflow "hidden"
+            , property "text-overflow" "ellipsis"
+            ]
+        , rule ".page-row .page-link:hover"
+            [ backgroundColor sidebarRow ]
+        , rule ".page-row.selected .page-link"
+            [ backgroundColor sidebarSel
+            , fontWeight "500"
+            ]
+        , rule ".btn-delete"
+            [ backgroundColor "transparent"
+            , property "border" "none"
+            , color inkFaint
+            , fontSize (px 13)
+            , padding2 (px 2) (px 6)
+            , cursor "pointer"
+            , opacity 0.0
+            , transition "opacity 0.1s"
+            ]
+        , rule ".page-row:hover .btn-delete"
+            [ opacity 1.0 ]
+        , rule ".btn-delete:hover"
+            [ color deleteHot ]
+
+        , rule ".sidebar-footer"
+            [ padding2 (px 12) (px 16)
+            , borderTop ("1px solid " ++ border)
+            , fontSize (px 12)
+            , color inkSoft
+            , display "flex"
+            , justifyContent "space-between"
+            ]
+        , rule ".user-email"
+            [ overflow "hidden"
+            , property "text-overflow" "ellipsis"
+            ]
+
+        -- Editor
+        , rule ".editor"
+            [ display "flex"
+            , flexDirection "column"
+            , backgroundColor editorBg
+            ]
+        , rule ".editor.empty"
+            [ alignItems "center"
+            , justifyContent "center"
+            ]
+        , rule ".placeholder"
+            [ color inkFaint
+            , fontSize (px 15)
+            ]
+        , rule ".editor-header"
+            [ display "flex"
+            , alignItems "center"
+            , justifyContent "space-between"
+            , padding2 (px 14) (px 28)
+            , borderBottom ("1px solid " ++ borderSoft)
+            ]
+
+        , rule ".save-state"
+            [ fontSize (px 12)
+            , padding2 (px 3) (px 8)
+            , borderRadius (px 10)
+            ]
+        , rule ".save-state.saved"   [ backgroundColor savedBg,  color savedFg ]
+        , rule ".save-state.saving"  [ backgroundColor savingBg, color savingFg ]
+        , rule ".save-state.error"   [ backgroundColor errorBg,  color errorFg ]
+
+        , rule ".editor-area"
+            [ flex "1"
+            , property "border" "none"
+            , property "outline" "none"
+            , property "resize" "none"
+            , padding4 (px 28) (px 32) (px 60) (px 32)
+            , fontFamily serifFont
+            , fontSize (px 17)
+            , lineHeight "1.7"
+            , color ink
+            , backgroundColor "transparent"
+            ]
+        , rule ".editor-area::placeholder"
+            [ color placeholder
+            , fontStyle "italic"
+            ]
+        ]
+
+
+-- ─── Auth pages stylesheet (used by HTML auth pages in Part 2) ───
+
+authCss : String
+authCss =
+    stylesheet
+        [ rule "body"
+            [ fontFamily uiFont
+            , backgroundColor bg
+            , margin "0"
+            , padding2 (px 60) (px 20)
+            , color ink
+            ]
+        , rule ".auth-card"
+            [ maxWidth (px 360)
+            , margin2 "0" "auto"
+            , backgroundColor (hex "ffffff")
+            , property "border" ("1px solid " ++ border)
+            , borderRadius (px 8)
+            , padding4 (px 28) (px 28) (px 24) (px 28)
+            ]
+        , rule ".auth-card h1"
+            [ margin4 "0" "0" (px 20) "0"
+            , fontSize (px 22)
+            ]
+        , rule ".auth-card label"
+            [ display "block"
+            , fontSize (px 13)
+            , color inkSoft
+            , marginBottom (px 14)
+            ]
+        , rule ".auth-card input"
+            [ display "block"
+            , width (pct 100)
+            , marginTop (px 4)
+            , padding2 (px 8) (px 10)
+            , property "border" ("1px solid " ++ border)
+            , borderRadius (px 4)
+            , fontSize (px 15)
+            ]
+        , rule ".auth-card button"
+            [ width (pct 100)
+            , padding (px 10)
+            , backgroundColor warm
+            , property "border" "none"
+            , borderRadius (px 4)
+            , fontSize (px 15)
+            , fontWeight "600"
+            , color (hex "3f3a30")
+            , cursor "pointer"
+            ]
+        , rule ".auth-card button:hover"
+            [ backgroundColor warmHover ]
+        , rule ".auth-card .error"
+            [ color deleteHot
+            , fontSize (px 13)
+            , marginTop (px 12)
+            ]
+        , rule ".auth-card .alt"
+            [ fontSize (px 13)
+            , color inkSoft
+            , marginTop (px 18)
+            , textAlign "center"
+            ]
+        , rule ".auth-card .alt a"
+            [ color ink ]
+        ]

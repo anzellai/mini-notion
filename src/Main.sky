@@ -1,0 +1,64 @@
+module Main exposing (main)
+
+-- Main -- the Sky.Live mount and server boot.
+--
+-- Part 1 ships without auth; the user is hardcoded in Auth.sky.
+-- The init function loads pages on first mount; subscriptions are
+-- empty (Part 2 will add an SSE broadcast subscription for collab).
+
+import Sky.Core.Prelude exposing (..)
+import Sky.Core.Task as Task
+import Std.Cmd as Cmd
+import Std.Sub as Sub
+import Std.Live as Live exposing (app)
+import Std.Log exposing (println)
+
+import Db
+import Model exposing (..)
+import Update exposing (update)
+import View
+
+
+subscriptions : Model -> Sub.Sub Msg
+subscriptions _ =
+    Sub.none
+
+
+initApp : a -> ( Model, Cmd.Cmd Msg )
+initApp _ =
+    let
+        _ =
+            println ""
+
+        _ =
+            println "==============================================="
+
+        _ =
+            println " mini-notion (Sky.Live) on http://localhost:8000"
+
+        _ =
+            println "==============================================="
+
+        _ =
+            println ""
+    in
+        ( initialModel
+          -- Chain initSchema -> listPages so the CREATE TABLE finishes
+          -- before the first SELECT runs. Using Cmd.batch here would
+          -- race -- listPages would error with "no such table: pages"
+          -- on a fresh checkout where the .db doesn't exist yet.
+        , Cmd.perform
+            (Db.initSchema |> Task.andThen (\_ -> Db.listPages 1))
+            PagesLoaded
+        )
+
+
+main =
+    app
+        { init = initApp
+        , update = update
+        , view = View.view
+        , subscriptions = subscriptions
+        , routes = []
+        , notFound = ()
+        }

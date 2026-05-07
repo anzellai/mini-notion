@@ -1,0 +1,37 @@
+module Auth exposing (Session, hardcoded)
+
+-- Auth -- placeholder for Part 1.
+--
+-- Part 1 ships without authentication: every visitor sees the same
+-- pages and the owner_id is hardcoded to 1. This is a deliberate
+-- scope cut, not laziness.
+--
+-- Why: the canonical Sky way to add auth is Std.Auth + the [auth]
+-- block in sky.toml, which auto-creates sky_users and sky_sessions
+-- tables and exposes Auth.register / Auth.login as one-line calls.
+-- That story is interesting enough to deserve its own episode, and
+-- it pairs naturally with Part 2's live-collab broadcast (each user
+-- needs an identity for collaboration to mean anything).
+--
+-- So the architectural seam stays: a Session lives in Model and
+-- everything downstream reads `session.id`, `session.email`. Today
+-- the Session is hardcoded; in Part 2 we swap in real Std.Auth.
+
+import Sky.Core.Prelude exposing (..)
+
+
+type alias Session =
+    { id : Int
+    , email : String
+    , role : String
+    , token : String
+    }
+
+
+hardcoded : Session
+hardcoded =
+    { id = 1
+    , email = "you@example.com"
+    , role = "user"
+    , token = ""
+    }

@@ -1,0 +1,128 @@
+module View exposing (view)
+
+-- View -- the entire Sky.Live UI for mini-Notion in Part 1.
+-- Sidebar of pages, editor pane with a textarea, save indicator.
+
+import Sky.Core.Prelude exposing (..)
+import Sky.Core.List as List
+import Std.Html exposing (..)
+import Std.Html.Attributes exposing (..)
+import Std.Live.Events exposing (onClick, onInput)
+
+import Model exposing (..)
+import Db
+import Style
+
+
+view : Model -> VNode
+view model =
+    div [ class "shell" ]
+        [ styleNode [] Style.css
+        , div [ class "app" ]
+            [ sidebar model
+            , editor model
+            ]
+        , maybeNotice model.notice
+        ]
+
+
+-- ─── sidebar ─────────────────────────────────────────────────────
+
+sidebar : Model -> VNode
+sidebar model =
+    aside [ class "sidebar" ]
+        [ div [ class "sidebar-header" ]
+            [ span [ class "sidebar-title" ] [ text "Pages" ]
+            , button
+                [ class "btn-new", onClick NewPage ]
+                [ text "+ New" ]
+            ]
+        , ul [ class "page-list" ]
+            (List.map (pageRow model.selected) model.pages)
+        , div [ class "sidebar-footer" ]
+            [ span [ class "user-email" ] [ text model.session.email ]
+            ]
+        ]
+
+
+pageRow : Maybe Int -> Db.Page -> VNode
+pageRow selected page =
+    let
+        isSelected =
+            case selected of
+                Just s ->
+                    s == page.id
+
+                Nothing ->
+                    False
+
+        cls =
+            if isSelected then
+                "page-row selected"
+            else
+                "page-row"
+    in
+        li [ class cls ]
+            [ a
+                [ onClick (SelectPage page.id), class "page-link" ]
+                [ text page.title ]
+            , button
+                [ class "btn-delete"
+                , onClick (DeletePage page.id)
+                , attribute "title" "Delete page"
+                ]
+                [ text "x" ]
+            ]
+
+
+-- ─── editor ──────────────────────────────────────────────────────
+
+editor : Model -> VNode
+editor model =
+    case model.selected of
+        Nothing ->
+            section [ class "editor empty" ]
+                [ p [ class "placeholder" ]
+                    [ text "Select a page on the left, or create a new one." ]
+                ]
+
+        Just pageId ->
+            section [ class "editor" ]
+                [ div [ class "editor-header" ]
+                    [ saveIndicator model.saveState ]
+                , textarea
+                    -- sky-key tells Sky.Live's diff to treat the
+                    -- textarea as a distinct element per page.
+                    -- Without it the browser keeps the user-typed
+                    -- value across page switches and the new
+                    -- model.draft is ignored (textarea DOM state is
+                    -- sticky once the user has interacted with it).
+                    [ attribute "sky-key" (String.fromInt pageId)
+                    , class "editor-area"
+                    , value model.draft
+                    , onInput EditDraft
+                    , placeholder "Start writing..."
+                    ]
+                    []
+                ]
+
+
+saveIndicator : SaveState -> VNode
+saveIndicator state =
+    case state of
+        Saved ->
+            span [ class "save-state saved" ] [ text "Saved" ]
+
+        Saving ->
+            span [ class "save-state saving" ] [ text "Saving..." ]
+
+        SaveError errMsg ->
+            span [ class "save-state error" ] [ text errMsg ]
+
+
+maybeNotice : String -> VNode
+maybeNotice notice =
+    if notice == "" then
+        text ""
+    else
+        div [ class "notice" ] [ text notice ]

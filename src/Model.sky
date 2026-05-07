@@ -1,0 +1,57 @@
+module Model exposing
+    ( SaveState(..)
+    , Model
+    , Msg(..)
+    , initialModel
+    )
+
+-- Model -- the Sky.Live state and message ADT for mini-Notion.
+--
+-- Auth is hardcoded in Part 1 (see Auth.sky for why). Everything else
+-- is pure TEA: a Model record, a Msg sum type, and update transforms
+-- one to the next.
+
+import Sky.Core.Prelude exposing (..)
+import Sky.Core.Error as Error exposing (Error)
+import Auth exposing (Session)
+import Db
+
+
+type SaveState
+    = Saved
+    | Saving
+    | SaveError String
+
+
+type alias Model =
+    { session : Session
+    , pages : List Db.Page
+    , selected : Maybe Int
+    , draft : String
+    , saveState : SaveState
+    , notice : String
+    }
+
+
+type Msg
+    = SelectPage Int
+    | NewPage
+    | DeletePage Int
+    | EditDraft String
+    | SaveDraft
+    | PagesLoaded (Result Error (List Db.Page))
+    | PageContentLoaded (Result Error (Maybe Db.Page))
+    | PageCreated (Result Error Int)
+    | PageDeleted (Result Error Int)
+    | PageSaved (Result Error Int)
+
+
+initialModel : Model
+initialModel =
+    { session = Auth.hardcoded
+    , pages = []
+    , selected = Nothing
+    , draft = ""
+    , saveState = Saved
+    , notice = ""
+    }

@@ -1,0 +1,217 @@
+module Update exposing (update)
+
+-- Update -- message handlers for mini-Notion.
+--
+-- Every database call is a Task. We never block the message loop on
+-- I/O. Cmd.perform takes a Task and a constructor that accepts the
+-- Result, and Sky.Live runs the Task asynchronously, then dispatches
+-- the resulting Msg back through update.
+--
+-- The pattern is the same every time: update is pure, returns a new
+-- Model and a Cmd; the Cmd runs asynchronously; when it finishes it
+-- fires another Msg with the result.
+
+import Sky.Core.Prelude exposing (..)
+import Sky.Core.Error as Error exposing (Error)
+import Sky.Core.List as List
+import Sky.Core.String as String
+import Std.Cmd as Cmd
+import Std.Log exposing (println)
+
+import Model exposing (..)
+import Db
+
+
+update : Msg -> Model -> ( Model, Cmd.Cmd Msg )
+update msg model =
+    case msg of
+        PagesLoaded (Ok pages) ->
+            let
+                firstId =
+                    case List.head pages of
+                        Just p ->
+                            Just p.id
+
+                        Nothing ->
+                            Nothing
+
+                draft =
+                    case List.head pages of
+                        Just p ->
+                            p.content
+
+                        Nothing ->
+                            ""
+            in
+                ( { model
+                    | pages = pages
+                    , selected = firstId
+                    , draft = draft
+                    , saveState = Saved
+                  }
+                , Cmd.none
+                )
+
+        PagesLoaded (Err e) ->
+            let
+                _ =
+                    println ("[mini-notion] PagesLoaded: " ++ Error.toString e)
+            in
+                ( { model | notice = "Could not load pages." }
+                , Cmd.none
+                )
+
+        SelectPage pageId ->
+            ( { model | selected = Just pageId, saveState = Saved }
+            , Cmd.perform (Db.getPage pageId model.session.id) PageContentLoaded
+            )
+
+        PageContentLoaded (Ok (Just page)) ->
+            ( { model | draft = page.content, saveState = Saved }
+            , Cmd.none
+            )
+
+        PageContentLoaded (Ok Nothing) ->
+            ( { model | draft = "", saveState = Saved }
+            , Cmd.none
+            )
+
+        PageContentLoaded (Err e) ->
+            let
+                _ =
+                    println ("[mini-notion] PageContentLoaded: " ++ Error.toString e)
+            in
+                ( { model | saveState = SaveError "Could not load page." }
+                , Cmd.none
+                )
+
+        NewPage ->
+            ( model
+            , Cmd.perform (Db.createPage model.session.id) PageCreated
+            )
+
+        PageCreated (Ok newId) ->
+            let
+                page =
+                    { id = newId
+                    , title = "Untitled"
+                    , content = ""
+                    , updatedAt = ""
+                    }
+            in
+                ( { model
+                    | pages = page :: model.pages
+                    , selected = Just newId
+                    , draft = ""
+                    , saveState = Saved
+                  }
+                , Cmd.none
+                )
+
+        PageCreated (Err e) ->
+            let
+                _ =
+                    println ("[mini-notion] PageCreated: " ++ Error.toString e)
+            in
+                ( { model | notice = "Could not create page." }
+                , Cmd.none
+                )
+
+        DeletePage pageId ->
+            ( model
+            , Cmd.perform (Db.deletePage pageId model.session.id) PageDeleted
+            )
+
+        PageDeleted (Ok pageId) ->
+            let
+                remaining =
+                    List.filter (\p -> p.id /= pageId) model.pages
+
+                newSelected =
+                    case model.selected of
+                        Just s ->
+                            if s == pageId then
+                                case List.head remaining of
+                                    Just p ->
+                                        Just p.id
+
+                                    Nothing ->
+                                        Nothing
+                            else
+                                Just s
+
+                        Nothing ->
+                            Nothing
+            in
+                ( { model
+                    | pages = remaining
+                    , selected = newSelected
+                    , draft = ""
+                  }
+                , Cmd.none
+                )
+
+        PageDeleted (Err e) ->
+            let
+                _ =
+                    println ("[mini-notion] PageDeleted: " ++ Error.toString e)
+            in
+                ( { model | notice = "Could not delete page." }
+                , Cmd.none
+                )
+
+        EditDraft newDraft ->
+            -- Sky.Live's [live] input = "debounce" mode coalesces these;
+            -- the server only sees an EditDraft message after the user
+            -- pauses typing for the configured debounce window.
+            ( { model | draft = newDraft, saveState = Saving }
+            , Cmd.perform (saveDraftTask model.session.id model.selected newDraft) PageSaved
+            )
+
+        SaveDraft ->
+            ( { model | saveState = Saving }
+            , Cmd.perform (saveDraftTask model.session.id model.selected model.draft) PageSaved
+            )
+
+        PageSaved (Ok _) ->
+            ( { model | saveState = Saved }
+            , Cmd.none
+            )
+
+        PageSaved (Err e) ->
+            let
+                _ =
+                    println ("[mini-notion] PageSaved: " ++ Error.toString e)
+            in
+                ( { model | saveState = SaveError "Could not save." }
+                , Cmd.none
+                )
+
+
+-- ─── Helpers ─────────────────────────────────────────────────────
+
+saveDraftTask : Int -> Maybe Int -> String -> Task Error Int
+saveDraftTask ownerId selected draft =
+    case selected of
+        Just pageId ->
+            Db.savePage pageId ownerId (titleFrom draft) draft
+
+        Nothing ->
+            Task.succeed 0
+
+
+titleFrom : String -> String
+titleFrom draft =
+    case List.head (String.split "\n" draft) of
+        Just line ->
+            let
+                trimmed =
+                    String.trim line
+            in
+                if trimmed == "" then
+                    "Untitled"
+                else
+                    String.slice 0 60 trimmed
+
+        Nothing ->
+            "Untitled"
