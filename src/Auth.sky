@@ -1,23 +1,25 @@
-module Auth exposing (Session, hardcoded)
+module Auth exposing
+    ( Session
+    , initSchema
+    , register
+    , login
+    )
 
--- Auth -- placeholder for Part 1.
+-- Auth -- real password auth via Std.Auth.hashPassword/verifyPassword,
+-- backed by our own users table (so we can co-locate it with pages
+-- in the same SQLite file and avoid the Std.Auth managed-table
+-- machinery for a simple demo).
 --
--- Part 1 ships without authentication: every visitor sees the same
--- pages and the owner_id is hardcoded to 1. This is a deliberate
--- scope cut, not laziness.
---
--- Why: the canonical Sky way to add auth is Std.Auth + the [auth]
--- block in sky.toml, which auto-creates sky_users and sky_sessions
--- tables and exposes Auth.register / Auth.login as one-line calls.
--- That story is interesting enough to deserve its own episode, and
--- it pairs naturally with Part 2's live-collab broadcast (each user
--- needs an identity for collaboration to mean anything).
---
--- So the architectural seam stays: a Session lives in Model and
--- everything downstream reads `session.id`, `session.email`. Today
--- the Session is hardcoded; in Part 2 we swap in real Std.Auth.
+-- The [auth] block in sky.toml supplies the bcrypt cost + secret key
+-- that Std.Auth.hashPassword reads under the hood.
 
 import Sky.Core.Prelude exposing (..)
+import Sky.Core.Error as Error exposing (Error)
+import Sky.Core.List as List
+import Sky.Core.String as String
+import Sky.Core.Task as Task
+import Std.Db as StdDb
+import Std.Auth as StdAuth
 
 
 type alias Session =
@@ -28,10 +30,112 @@ type alias Session =
     }
 
 
-hardcoded : Session
-hardcoded =
-    { id = 1
-    , email = "you@example.com"
-    , role = "user"
-    , token = ""
-    }
+dbPath : String
+dbPath =
+    "mini-notion.db"
+
+
+usersSchema : String
+usersSchema =
+    "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user', created_at TEXT DEFAULT (datetime('now')))"
+
+
+initSchema : Task Error ()
+initSchema =
+    StdDb.open "sqlite" dbPath
+        |> Task.andThen (\db -> StdDb.execRaw db usersSchema)
+        |> Task.map (\_ -> ())
+
+
+parseInt : String -> Int
+parseInt s =
+    case String.toInt s of
+        Just n ->
+            n
+
+        Nothing ->
+            0
+
+
+-- register: hash the password (pure Result), INSERT a user row, then
+-- read the inserted id back. Lifts the pure Result into the Task
+-- chain via succeed/fail.
+
+register : String -> String -> Task Error Session
+register email password =
+    let
+        emailLower =
+            String.toLower email
+    in
+        case StdAuth.hashPassword password of
+            Err msg ->
+                Task.fail msg
+
+            Ok hash ->
+                StdDb.open "sqlite" dbPath
+                    |> Task.andThen
+                        (\db ->
+                            StdDb.exec db
+                                "INSERT INTO users (email, password_hash) VALUES (?, ?)"
+                                [ emailLower, hash ]
+                                |> Task.andThen
+                                    (\_ ->
+                                        StdDb.query db
+                                            "SELECT id FROM users WHERE email = ? LIMIT 1"
+                                            [ emailLower ]
+                                    )
+                        )
+                    |> Task.map
+                        (\rows ->
+                            case List.head rows of
+                                Just row ->
+                                    { id = parseInt (StdDb.getField "id" row)
+                                    , email = emailLower
+                                    , role = "user"
+                                    , token = ""
+                                    }
+
+                                Nothing ->
+                                    { id = 0, email = emailLower, role = "user", token = "" }
+                        )
+
+
+login : String -> String -> Task Error Session
+login email password =
+    let
+        emailLower =
+            String.toLower email
+    in
+        StdDb.open "sqlite" dbPath
+            |> Task.andThen
+                (\db ->
+                    StdDb.query db
+                        "SELECT id, password_hash, role FROM users WHERE email = ? LIMIT 1"
+                        [ emailLower ]
+                )
+            |> Task.andThen
+                (\rows ->
+                    case List.head rows of
+                        Nothing ->
+                            Task.fail Error.permissionDenied
+
+                        Just row ->
+                            let
+                                hash =
+                                    StdDb.getField "password_hash" row
+                            in
+                                case StdAuth.verifyPassword password hash of
+                                    Err msg ->
+                                        Task.fail msg
+
+                                    Ok False ->
+                                        Task.fail Error.permissionDenied
+
+                                    Ok True ->
+                                        Task.succeed
+                                            { id = parseInt (StdDb.getField "id" row)
+                                            , email = emailLower
+                                            , role = StdDb.getField "role" row
+                                            , token = ""
+                                            }
+                )

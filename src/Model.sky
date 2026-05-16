@@ -1,15 +1,16 @@
 module Model exposing
     ( SaveState(..)
+    , PageView(..)
     , Model
     , Msg(..)
     , initialModel
     )
 
--- Model -- the Sky.Live state and message ADT for mini-Notion.
+-- Model -- Sky.Live state for mini-Notion Part 2.
 --
--- Auth is hardcoded in Part 1 (see Auth.sky for why). Everything else
--- is pure TEA: a Model record, a Msg sum type, and update transforms
--- one to the next.
+-- Auth is real (Std.Auth + our users table). Pages are scoped by
+-- owner_id, with explicit per-page sharing via page_shares.
+-- 1-second Tick subscription pulls remote edits for collab.
 
 import Sky.Core.Prelude exposing (..)
 import Sky.Core.Error as Error exposing (Error)
@@ -23,35 +24,87 @@ type SaveState
     | SaveError String
 
 
+type PageView
+    = SignInView
+    | SignUpView
+    | AppView
+
+
 type alias Model =
-    { session : Session
+    { -- Auth / routing
+      page : PageView
+    , session : Maybe Session
+    , signInEmail : String
+    , signInPassword : String
+    , signUpEmail : String
+    , signUpPassword : String
+    , authError : String
+
+    -- App state (when signed in)
     , pages : List Db.Page
     , selected : Maybe Int
     , draft : String
     , saveState : SaveState
+    , shares : List Db.Share
+    , shareInput : String
+    , lastTypedAtTick : Int
+
+    -- UI banner
     , notice : String
     }
 
 
 type Msg
-    = SelectPage Int
+    = -- Auth
+      NavigateSignIn
+    | NavigateSignUp
+    | UpdateSignInEmail String
+    | UpdateSignInPassword String
+    | UpdateSignUpEmail String
+    | UpdateSignUpPassword String
+    | SubmitSignIn
+    | SubmitSignUp
+    | SignedIn (Result Error Session)
+    | SignedUp (Result Error Session)
+    | SignOut
+      -- Pages
+    | SelectPage Int
     | NewPage
     | DeletePage Int
-    | EditDraft String
-    | SaveDraft
     | PagesLoaded (Result Error (List Db.Page))
     | PageContentLoaded (Result Error (Maybe Db.Page))
     | PageCreated (Result Error Int)
     | PageDeleted (Result Error Int)
+      -- Editor
+    | EditDraft String
     | PageSaved (Result Error Int)
+      -- Sharing
+    | UpdateShareInput String
+    | SharePage
+    | UnsharePage String
+    | SharesLoaded (Result Error (List Db.Share))
+    | ShareAdded (Result Error Int)
+    | ShareRemoved (Result Error Int)
+      -- Collab polling
+    | Tick
+    | PageContentReloaded (Result Error (Maybe Db.Page))
 
 
 initialModel : Model
 initialModel =
-    { session = Auth.hardcoded
+    { page = SignInView
+    , session = Nothing
+    , signInEmail = ""
+    , signInPassword = ""
+    , signUpEmail = ""
+    , signUpPassword = ""
+    , authError = ""
     , pages = []
     , selected = Nothing
     , draft = ""
     , saveState = Saved
+    , shares = []
+    , shareInput = ""
+    , lastTypedAtTick = 0
     , notice = ""
     }

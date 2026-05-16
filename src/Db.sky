@@ -1,23 +1,23 @@
 module Db exposing
     ( Page
+    , Share
     , initSchema
     , listPages
     , getPage
     , createPage
     , savePage
     , deletePage
+    , addShare
+    , removeShare
+    , listShares
     )
 
--- Db -- the pages table.
+-- Db -- pages + page_shares.
 --
--- Std.Auth manages its own users + sessions tables when [auth] is
--- configured in sky.toml. We only own the pages table here, which is
--- the entire point of an MVP scope cut: don't reinvent what the
--- standard library already does.
---
--- Every helper returns Task Error a. They open the DB connection on
--- each call (cheap for SQLite, the OS caches the file). The Task
--- chain composes through Task.andThen and Task.map.
+-- Pages are scoped by owner_id. Sharing is in a separate join
+-- table (page_shares) so listPages can do a UNION ALL of "pages
+-- I own" + "pages shared with me", indexed for the hot path,
+-- and the schema is ready for invite-level roles in Part 3.
 
 import Sky.Core.Prelude exposing (..)
 import Sky.Core.Error as Error exposing (Error)
@@ -32,27 +32,55 @@ dbPath =
     "mini-notion.db"
 
 
--- ─── Schema ──────────────────────────────────────────────────────
+-- Schema -----------------------------------------------------------
 
 pagesSchema : String
 pagesSchema =
     "CREATE TABLE IF NOT EXISTS pages (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id INTEGER NOT NULL, title TEXT NOT NULL DEFAULT 'Untitled', content TEXT NOT NULL DEFAULT '', updated_at TEXT DEFAULT (datetime('now')))"
 
 
+sharesSchema : String
+sharesSchema =
+    "CREATE TABLE IF NOT EXISTS page_shares (page_id INTEGER NOT NULL, user_email TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'editor', status TEXT NOT NULL DEFAULT 'active', invited_by INTEGER NOT NULL, created_at TEXT DEFAULT (datetime('now')), PRIMARY KEY (page_id, user_email), FOREIGN KEY (page_id) REFERENCES pages(id) ON DELETE CASCADE)"
+
+
+idxSharesEmail : String
+idxSharesEmail =
+    "CREATE INDEX IF NOT EXISTS idx_page_shares_email_active ON page_shares(user_email, page_id) WHERE status IN ('active','invited')"
+
+
+idxSharesPage : String
+idxSharesPage =
+    "CREATE INDEX IF NOT EXISTS idx_page_shares_page ON page_shares(page_id)"
+
+
 initSchema : Task Error ()
 initSchema =
     StdDb.open "sqlite" dbPath
-        |> Task.andThen (\db -> StdDb.execRaw db pagesSchema)
+        |> Task.andThen
+            (\db ->
+                StdDb.execRaw db pagesSchema
+                    |> Task.andThen (\_ -> StdDb.execRaw db sharesSchema)
+                    |> Task.andThen (\_ -> StdDb.execRaw db idxSharesEmail)
+                    |> Task.andThen (\_ -> StdDb.execRaw db idxSharesPage)
+            )
         |> Task.map (\_ -> ())
 
 
--- ─── Page record ─────────────────────────────────────────────────
+-- Records ----------------------------------------------------------
 
 type alias Page =
     { id : Int
     , title : String
     , content : String
     , updatedAt : String
+    , access : String
+    }
+
+
+type alias Share =
+    { email : String
+    , role : String
     }
 
 
@@ -71,31 +99,54 @@ rowToPage row =
     , title = StdDb.getField "title" row
     , content = StdDb.getField "content" row
     , updatedAt = StdDb.getField "updated_at" row
+    , access = StdDb.getField "access" row
     }
 
 
--- ─── CRUD ────────────────────────────────────────────────────────
+rowToShare row =
+    { email = StdDb.getField "user_email" row
+    , role = StdDb.getField "role" row
+    }
 
-listPages : Int -> Task Error (List Page)
-listPages ownerId =
+
+-- Queries ----------------------------------------------------------
+--
+-- UNION ALL of "pages I own" + "pages shared with me", each branch
+-- hitting its own index. No DISTINCT / hash dedup because addShare
+-- rejects self-shares so the branches can't overlap.
+
+listPagesSql : String
+listPagesSql =
+    "SELECT id, title, content, updated_at, 'owner' AS access FROM pages WHERE owner_id = ? UNION ALL SELECT p.id, p.title, p.content, p.updated_at, s.role AS access FROM page_shares s JOIN pages p ON p.id = s.page_id WHERE s.user_email = ? AND s.status IN ('active','invited') ORDER BY updated_at DESC"
+
+
+listPages : Int -> String -> Task Error (List Page)
+listPages ownerId email =
     StdDb.open "sqlite" dbPath
         |> Task.andThen
             (\db ->
-                StdDb.query db
-                    "SELECT id, title, content, updated_at FROM pages WHERE owner_id = ? ORDER BY updated_at DESC"
-                    [ String.fromInt ownerId ]
+                StdDb.query db listPagesSql
+                    [ String.fromInt ownerId, email ]
             )
         |> Task.map (\rows -> List.map rowToPage rows)
 
 
-getPage : Int -> Int -> Task Error (Maybe Page)
-getPage pageId ownerId =
+getPageSql : String
+getPageSql =
+    "SELECT id, title, content, updated_at, 'owner' AS access FROM pages WHERE id = ? AND owner_id = ? UNION ALL SELECT p.id, p.title, p.content, p.updated_at, s.role AS access FROM page_shares s JOIN pages p ON p.id = s.page_id WHERE p.id = ? AND s.user_email = ? AND s.status IN ('active','invited') LIMIT 1"
+
+
+getPage : Int -> Int -> String -> Task Error (Maybe Page)
+getPage pageId ownerId email =
     StdDb.open "sqlite" dbPath
         |> Task.andThen
             (\db ->
-                StdDb.query db
-                    "SELECT id, title, content, updated_at FROM pages WHERE id = ? AND owner_id = ? LIMIT 1"
-                    [ String.fromInt pageId, String.fromInt ownerId ]
+                StdDb.query db getPageSql
+                    [ String.fromInt pageId
+                    , String.fromInt ownerId
+                    , String.fromInt pageId
+                    , email
+                    ]
             )
         |> Task.map
             (\rows ->
@@ -132,16 +183,31 @@ createPage ownerId =
             )
 
 
-savePage : Int -> Int -> String -> String -> Task Error Int
-savePage pageId ownerId title content =
+-- savePage allows owner OR active sharee to update. We don't filter
+-- on role here in Part 2 (everyone shared is 'editor'); Part 3 will
+-- restrict 'viewer' role to a SELECT-only path.
+
+savePageSql : String
+savePageSql =
+    "UPDATE pages SET title = ?, content = ?, updated_at = datetime('now') WHERE id = ? AND (owner_id = ? OR EXISTS (SELECT 1 FROM page_shares s WHERE s.page_id = pages.id AND s.user_email = ? AND s.status IN ('active','invited') AND s.role IN ('editor','commenter')))"
+
+
+savePage : Int -> Int -> String -> String -> String -> Task Error Int
+savePage pageId ownerId email title content =
     StdDb.open "sqlite" dbPath
         |> Task.andThen
             (\db ->
-                StdDb.exec db
-                    "UPDATE pages SET title = ?, content = ?, updated_at = datetime('now') WHERE id = ? AND owner_id = ?"
-                    [ title, content, String.fromInt pageId, String.fromInt ownerId ]
+                StdDb.exec db savePageSql
+                    [ title
+                    , content
+                    , String.fromInt pageId
+                    , String.fromInt ownerId
+                    , email
+                    ]
             )
 
+
+-- deletePage stays owner-only. Sharees can edit but not nuke.
 
 deletePage : Int -> Int -> Task Error Int
 deletePage pageId ownerId =
@@ -153,3 +219,43 @@ deletePage pageId ownerId =
                     [ String.fromInt pageId, String.fromInt ownerId ]
             )
         |> Task.map (\_ -> pageId)
+
+
+-- Share helpers ----------------------------------------------------
+
+addShare : Int -> String -> String -> Int -> Task Error Int
+addShare pageId email role invitedBy =
+    StdDb.open "sqlite" dbPath
+        |> Task.andThen
+            (\db ->
+                StdDb.exec db
+                    "INSERT OR REPLACE INTO page_shares (page_id, user_email, role, status, invited_by) VALUES (?, ?, ?, 'active', ?)"
+                    [ String.fromInt pageId
+                    , String.toLower email
+                    , role
+                    , String.fromInt invitedBy
+                    ]
+            )
+
+
+removeShare : Int -> String -> Task Error Int
+removeShare pageId email =
+    StdDb.open "sqlite" dbPath
+        |> Task.andThen
+            (\db ->
+                StdDb.exec db
+                    "UPDATE page_shares SET status = 'revoked' WHERE page_id = ? AND user_email = ?"
+                    [ String.fromInt pageId, String.toLower email ]
+            )
+
+
+listShares : Int -> Task Error (List Share)
+listShares pageId =
+    StdDb.open "sqlite" dbPath
+        |> Task.andThen
+            (\db ->
+                StdDb.query db
+                    "SELECT user_email, role FROM page_shares WHERE page_id = ? AND status IN ('active','invited') ORDER BY created_at DESC"
+                    [ String.fromInt pageId ]
+            )
+        |> Task.map (\rows -> List.map rowToShare rows)

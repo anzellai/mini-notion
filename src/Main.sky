@@ -1,64 +1,102 @@
 module Main exposing (main)
 
--- Main -- the Sky.Live mount and server boot.
+-- Main -- single-binary dispatcher.
 --
--- Part 1 ships without auth; the user is hardcoded in Auth.sky.
--- The init function loads pages on first mount; subscriptions are
--- empty (Part 2 will add an SSE broadcast subscription for collab).
+--   ./sky-out/app          → mounts Sky.Live on :8000
+--   ./sky-out/app --tui    → enters Sky.Tui alt-screen mode
+--
+-- Live.app and Tui.app are both Task-shaped thunks (see
+-- runtime-go/rt/live.go:1505 and runtime-go/rt/tui_ui.go:63), so
+-- selecting one at startup and forcing it inside the dispatch
+-- branch is mechanically the same as having two main symbols
+-- compiled into two binaries. One source, two backends.
+--
+-- The shared boot (schema bootstrap + Tick subscription) lives in
+-- App.sky so neither branch repeats it. Model / Update / View are
+-- already shared via their own modules.
 
 import Sky.Core.Prelude exposing (..)
 import Sky.Core.Task as Task
-import Std.Cmd as Cmd
-import Std.Sub as Sub
-import Std.Live as Live exposing (app)
+import Sky.Core.List as List
+import Sky.Core.Result as Result
+import Sky.Core.System as System
+import Std.Live as Live
+import Std.Tui as Tui
+import Std.Ui as Ui
 import Std.Log exposing (println)
 
-import Db
+import App
 import Model exposing (..)
 import Update exposing (update)
 import View
 
 
-subscriptions : Model -> Sub.Sub Msg
-subscriptions _ =
-    Sub.none
+-- Sky.Live expects an Html view; Sky.Tui consumes Std.Ui.Element
+-- directly. The same View.view (returning Element Msg) feeds both
+-- backends -- we just wrap with Ui.layout for the web path so the
+-- runtime gets a complete HTML document. View.sky's appShell sets
+-- Ui.height (Ui.vh 100) so the layout fills the viewport natively
+-- (works correctly under Std.Ui v0.13.3+; earlier versions cascaded
+-- Ui.width Ui.fill as flex-grow:1 and broke vertical sizing).
+viewLive : Model -> any
+viewLive model =
+    Ui.layout [] (View.view model)
 
 
-initApp : a -> ( Model, Cmd.Cmd Msg )
-initApp _ =
+bannerWeb : Task Error ()
+bannerWeb =
     let
-        _ =
-            println ""
-
-        _ =
-            println "==============================================="
-
-        _ =
-            println " mini-notion (Sky.Live) on http://localhost:8000"
-
-        _ =
-            println "==============================================="
-
-        _ =
-            println ""
+        _ = println ""
+        _ = println "==============================================="
+        _ = println " mini-notion Part 2 (web) on http://localhost:8000"
+        _ = println "==============================================="
+        _ = println ""
     in
-        ( initialModel
-          -- Chain initSchema -> listPages so the CREATE TABLE finishes
-          -- before the first SELECT runs. Using Cmd.batch here would
-          -- race -- listPages would error with "no such table: pages"
-          -- on a fresh checkout where the .db doesn't exist yet.
-        , Cmd.perform
-            (Db.initSchema |> Task.andThen (\_ -> Db.listPages 1))
-            PagesLoaded
-        )
+        Task.succeed ()
+
+
+bannerTui : Task Error ()
+bannerTui =
+    let
+        _ = println "mini-notion Part 2 (tui) -- Ctrl-C to quit"
+    in
+        Task.succeed ()
 
 
 main =
-    app
-        { init = initApp
-        , update = update
-        , view = View.view
-        , subscriptions = subscriptions
-        , routes = []
-        , notFound = ()
-        }
+    let
+        args =
+            System.args () |> Task.run |> Result.withDefault []
+
+        isTui =
+            List.member "--tui" args
+
+        _ =
+            if isTui then
+                let
+                    _ = Task.run bannerTui
+                in
+                    Task.run
+                        (Tui.app
+                            { init = \flags -> App.init flags
+                            , update = update
+                            , view = View.view
+                            , subscriptions = App.subscriptions
+                            }
+                        )
+            else
+                let
+                    _ = Task.run bannerWeb
+                in
+                    Task.run
+                        (Live.app
+                            { init = \flags -> App.init flags
+                            , update = update
+                            , view = viewLive
+                            , subscriptions = App.subscriptions
+                            , routes = []
+                            , notFound = ()
+                            }
+                        )
+    in
+        ()

@@ -1,0 +1,91 @@
+module App exposing (init, subscriptions)
+
+-- App -- shared boot + subscriptions for mini-notion Part 2.
+--
+-- The Model, Msg, update, and view live in their own modules
+-- (Model.sky / Update.sky / View.sky) and are imported by both
+-- backend entries (Main.sky for Sky.Live, and the --tui dispatch
+-- branch in Main.sky for Sky.Tui). This module is the small
+-- amount of shared glue that both modes need to start: schema
+-- bootstrap + the 1Hz Tick subscription that drives the share
+-- sidebar refresh and editor content sync.
+
+import Sky.Core.Prelude exposing (..)
+import Sky.Core.Task as Task
+import Sky.Core.List as List
+import Sky.Core.String as String
+import Sky.Core.System as System
+import Std.Cmd as Cmd
+import Std.Sub as Sub
+import Std.Time as Time
+
+import Auth
+import Db
+import Model exposing (..)
+
+
+-- Boot: ensure both schemas exist before serving. Auth.initSchema
+-- creates sky_users + sky_sessions; Db.initSchema creates pages
+-- + page_shares with their two indexes. Chained via Task.andThen
+-- because Cmd.batch would race the two CREATEs against each other.
+--
+-- Demo-mode autologin: if SKY_DEMO_USER=<email>:<id> is set in the
+-- env (typically only when recording the cross-render demo), skip
+-- the sign-in screen entirely and load pages straight away. This is
+-- a recording-time convenience because Sky.Tui v0.13.2 doesn't
+-- accept synthetic character keystrokes into Std.Ui.Input.email /
+-- newPassword fields, making programmatic sign-in impossible.
+init : a -> ( Model, Cmd.Cmd Msg )
+init _ =
+    let
+        demoEnv =
+            System.getenvOr "SKY_DEMO_USER" ""
+
+        ( startModel, bootMsg ) =
+            if demoEnv == "" then
+                ( initialModel, \_ -> NavigateSignIn )
+            else
+                let
+                    parts = String.split ":" demoEnv
+                    email =
+                        case List.head parts of
+                            Just e -> e
+                            Nothing -> ""
+                    idStr =
+                        case List.head (List.drop 1 parts) of
+                            Just s -> s
+                            Nothing -> "1"
+                    uid =
+                        case String.toInt idStr of
+                            Just n -> n
+                            Nothing -> 1
+                    session =
+                        { id = uid, email = email, role = "user", token = "" }
+                in
+                    ( { initialModel
+                        | session = Just session
+                        , page = AppView
+                      }
+                    , \_ -> Tick
+                    )
+    in
+        ( startModel
+        , Cmd.perform
+            (Auth.initSchema
+                |> Task.andThen (\_ -> Db.initSchema)
+            )
+            bootMsg
+        )
+
+
+-- One Tick per second while signed in. The Tick handler in
+-- Update.sky re-pulls listPages (sidebar refresh after a share
+-- lands) and getPage (editor content sync from the other user).
+subscriptions : Model -> Sub.Sub Msg
+subscriptions model =
+    case model.session of
+        Just _ ->
+            Time.every 1000 Tick
+
+        Nothing ->
+            Sub.none

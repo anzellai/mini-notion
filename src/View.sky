@@ -1,51 +1,333 @@
 module View exposing (view)
 
--- View -- the entire Sky.Live UI for mini-Notion in Part 1.
--- Sidebar of pages, editor pane with a textarea, save indicator.
+-- View -- Std.Ui-based UI for mini-Notion Part 2.
+--
+-- No CSS file. Every attribute is typed (padding, spacing, color,
+-- font). The same Element tree is rendered to HTML by Sky.Live and
+-- to ANSI cells by Sky.Tui.
 
 import Sky.Core.Prelude exposing (..)
 import Sky.Core.List as List
-import Std.Html exposing (..)
-import Std.Html.Attributes exposing (..)
-import Std.Live.Events exposing (onClick, onInput)
+import Sky.Core.String as String
+import Std.Ui as Ui
+import Std.Ui exposing (Element)
+import Std.Ui.Background as Background
+import Std.Ui.Border as Border
+import Std.Ui.Font as Font
+import Std.Ui.Input as Input
+import Std.Ui.Events as Events
+import Std.Ui.Region as Region
 
 import Model exposing (..)
 import Db
-import Style
+import Auth exposing (Session)
 
 
-view : Model -> VNode
+-- Design tokens ----------------------------------------------------
+
+bgColor : Ui.Color
+bgColor =
+    Ui.rgb 247 245 240
+
+
+sidebarColor : Ui.Color
+sidebarColor =
+    Ui.rgb 239 234 224
+
+
+sidebarSelected : Ui.Color
+sidebarSelected =
+    Ui.rgb 217 208 184
+
+
+editorColor : Ui.Color
+editorColor =
+    Ui.rgb 250 248 243
+
+
+inkColor : Ui.Color
+inkColor =
+    Ui.rgb 44 42 38
+
+
+inkSoftColor : Ui.Color
+inkSoftColor =
+    Ui.rgb 107 101 88
+
+
+inkFaintColor : Ui.Color
+inkFaintColor =
+    Ui.rgb 154 146 134
+
+
+warmColor : Ui.Color
+warmColor =
+    Ui.rgb 246 193 119
+
+
+warmInk : Ui.Color
+warmInk =
+    Ui.rgb 63 58 48
+
+
+chipColor : Ui.Color
+chipColor =
+    Ui.rgb 232 226 211
+
+
+chipBorder : Ui.Color
+chipBorder =
+    Ui.rgb 216 210 195
+
+
+savedBg : Ui.Color
+savedBg =
+    Ui.rgb 214 231 210
+
+
+savedFg : Ui.Color
+savedFg =
+    Ui.rgb 63 90 54
+
+
+savingBg : Ui.Color
+savingBg =
+    Ui.rgb 244 236 210
+
+
+savingFg : Ui.Color
+savingFg =
+    Ui.rgb 107 90 38
+
+
+errorBg : Ui.Color
+errorBg =
+    Ui.rgb 244 212 207
+
+
+errorFg : Ui.Color
+errorFg =
+    Ui.rgb 122 58 48
+
+
+-- Top-level switch -------------------------------------------------
+
+view : Model -> Element Msg
 view model =
-    div [ class "shell" ]
-        [ styleNode [] Style.css
-        , div [ class "app" ]
-            [ sidebar model
-            , editor model
+    case model.page of
+        SignInView ->
+            signInPage model
+
+        SignUpView ->
+            signUpPage model
+
+        AppView ->
+            case model.session of
+                Just session ->
+                    appShell model session
+
+                Nothing ->
+                    signInPage model
+
+
+-- Auth pages -------------------------------------------------------
+
+authShell : List (Element Msg) -> Element Msg
+authShell children =
+    Ui.el
+        [ Background.color bgColor
+        , Ui.width Ui.fill
+        , Ui.height Ui.fill
+        , Ui.padding 40
+        ]
+        (Ui.column
+            [ Ui.centerX
+            , Ui.width (Ui.maximum 380 Ui.fill)
+            , Ui.spacing 18
+            , Background.color (Ui.rgb 255 255 255)
+            , Border.color chipBorder
+            , Border.width 1
+            , Border.rounded 8
+            , Ui.padding 28
             ]
-        , maybeNotice model.notice
+            children
+        )
+
+
+authTitle : String -> Element Msg
+authTitle s =
+    Ui.el
+        [ Region.heading 1
+        , Font.size 22
+        , Font.bold
+        , Font.color inkColor
+        ]
+        (Ui.text s)
+
+
+authError : String -> Element Msg
+authError msg =
+    if msg == "" then
+        Ui.none
+    else
+        Ui.el
+            [ Font.color errorFg
+            , Font.size 13
+            , Ui.paddingXY 0 4
+            ]
+            (Ui.text msg)
+
+
+primaryButton : String -> Msg -> Element Msg
+primaryButton label onClick =
+    Input.button
+        [ Background.color warmColor
+        , Font.color warmInk
+        , Font.bold
+        , Font.size 14
+        , Ui.paddingXY 16 10
+        , Border.rounded 4
+        , Ui.width Ui.fill
+        , Font.center
+        ]
+        { onPress = Just onClick, label = Ui.text label }
+
+
+altLink : String -> String -> Msg -> Element Msg
+altLink prefix linkText onClick =
+    Ui.row
+        [ Ui.centerX
+        , Ui.spacing 6
+        , Font.size 13
+        , Font.color inkSoftColor
+        ]
+        [ Ui.text prefix
+        , Input.button
+            [ Font.color inkColor
+            , Font.bold
+            , Events.onClick onClick
+            ]
+            { onPress = Just onClick, label = Ui.text linkText }
         ]
 
 
--- ─── sidebar ─────────────────────────────────────────────────────
+signInPage : Model -> Element Msg
+signInPage model =
+    authShell
+        [ authTitle "Sign in"
+        , Input.email
+            [ Ui.width Ui.fill ]
+            { onChange = UpdateSignInEmail
+            , text = model.signInEmail
+            , placeholder = Just (Input.placeholder [] (Ui.text "you@example.com"))
+            , label = Input.labelHidden "Email"
+            }
+        , Input.currentPassword
+            [ Ui.width Ui.fill ]
+            { onChange = UpdateSignInPassword
+            , text = model.signInPassword
+            , placeholder = Just (Input.placeholder [] (Ui.text "Password"))
+            , label = Input.labelHidden "Password"
+            , show = False
+            }
+        , authError model.authError
+        , primaryButton "Sign in" SubmitSignIn
+        , altLink "No account?" "Sign up" NavigateSignUp
+        ]
 
-sidebar : Model -> VNode
-sidebar model =
-    aside [ class "sidebar" ]
-        [ div [ class "sidebar-header" ]
-            [ span [ class "sidebar-title" ] [ text "Pages" ]
-            , button
-                [ class "btn-new", onClick NewPage ]
-                [ text "+ New" ]
+
+signUpPage : Model -> Element Msg
+signUpPage model =
+    authShell
+        [ authTitle "Create account"
+        , Input.email
+            [ Ui.width Ui.fill ]
+            { onChange = UpdateSignUpEmail
+            , text = model.signUpEmail
+            , placeholder = Just (Input.placeholder [] (Ui.text "you@example.com"))
+            , label = Input.labelHidden "Email"
+            }
+        , Input.newPassword
+            [ Ui.width Ui.fill ]
+            { onChange = UpdateSignUpPassword
+            , text = model.signUpPassword
+            , placeholder = Just (Input.placeholder [] (Ui.text "Password (min 8 chars)"))
+            , label = Input.labelHidden "Password"
+            , show = False
+            }
+        , authError model.authError
+        , primaryButton "Create account" SubmitSignUp
+        , altLink "Already have one?" "Sign in" NavigateSignIn
+        ]
+
+
+-- App shell --------------------------------------------------------
+
+appShell : Model -> Session -> Element Msg
+appShell model session =
+    Ui.row
+        [ Ui.width Ui.fill
+        , Ui.height (Ui.vh 100)
+        , Background.color bgColor
+        ]
+        [ sidebar model session
+        , editor model session
+        ]
+
+
+-- Sidebar ----------------------------------------------------------
+
+sidebar : Model -> Session -> Element Msg
+sidebar model session =
+    Ui.column
+        [ Ui.width (Ui.px 260)
+        , Ui.height Ui.fill
+        , Background.color sidebarColor
+        , Border.color chipBorder
+        , Border.widthEach { top = 0, right = 1, bottom = 0, left = 0 }
+        ]
+        [ sidebarHeader
+        , Ui.column
+            [ Ui.width Ui.fill
+            , Ui.spacing 2
+            , Ui.paddingXY 8 6
+            , Ui.scrollbarY
+            , Ui.height Ui.fill
             ]
-        , ul [ class "page-list" ]
             (List.map (pageRow model.selected) model.pages)
-        , div [ class "sidebar-footer" ]
-            [ span [ class "user-email" ] [ text model.session.email ]
-            ]
+        , sidebarFooter session
         ]
 
 
-pageRow : Maybe Int -> Db.Page -> VNode
+sidebarHeader : Element Msg
+sidebarHeader =
+    Ui.row
+        [ Ui.width Ui.fill
+        , Ui.spacing 8
+        , Ui.paddingXY 16 14
+        , Border.color chipBorder
+        , Border.widthEach { top = 0, right = 0, bottom = 1, left = 0 }
+        ]
+        [ Ui.el
+            [ Font.size 13
+            , Font.bold
+            , Font.color inkSoftColor
+            , Ui.width Ui.fill
+            ]
+            (Ui.text "PAGES")
+        , Input.button
+            [ Background.color warmColor
+            , Font.color warmInk
+            , Font.bold
+            , Font.size 12
+            , Ui.paddingXY 10 4
+            , Border.rounded 4
+            ]
+            { onPress = Just NewPage, label = Ui.text "+ New" }
+        ]
+
+
+pageRow : Maybe Int -> Db.Page -> Element Msg
 pageRow selected page =
     let
         isSelected =
@@ -56,73 +338,231 @@ pageRow selected page =
                 Nothing ->
                     False
 
-        cls =
+        bg =
             if isSelected then
-                "page-row selected"
+                sidebarSelected
             else
-                "page-row"
+                sidebarColor
+
+        accessChip =
+            if page.access == "owner" then
+                Ui.none
+            else
+                Ui.el
+                    [ Font.size 10
+                    , Font.color inkSoftColor
+                    , Background.color chipColor
+                    , Ui.paddingXY 6 2
+                    , Border.rounded 3
+                    ]
+                    (Ui.text "shared")
     in
-        li [ class cls ]
-            [ a
-                [ onClick (SelectPage page.id), class "page-link" ]
-                [ text page.title ]
-            , button
-                [ class "btn-delete"
-                , onClick (DeletePage page.id)
-                , attribute "title" "Delete page"
+        Ui.row
+            [ Ui.width Ui.fill
+            , Ui.spacing 6
+            , Ui.paddingXY 10 6
+            , Background.color bg
+            , Border.rounded 4
+            , Events.onClick (SelectPage page.id)
+            , Ui.pointer
+            ]
+            [ Ui.el
+                [ Font.size 14
+                , Font.color inkColor
+                , Ui.width Ui.fill
                 ]
-                [ text "x" ]
+                (Ui.text (truncate 36 page.title))
+            , accessChip
             ]
 
 
--- ─── editor ──────────────────────────────────────────────────────
+truncate : Int -> String -> String
+truncate n s =
+    if String.length s <= n then
+        s
+    else
+        String.slice 0 (n - 1) s ++ "..."
 
-editor : Model -> VNode
-editor model =
+
+sidebarFooter : Session -> Element Msg
+sidebarFooter session =
+    Ui.row
+        [ Ui.width Ui.fill
+        , Ui.paddingXY 16 12
+        , Border.color chipBorder
+        , Border.widthEach { top = 1, right = 0, bottom = 0, left = 0 }
+        , Font.size 12
+        , Font.color inkSoftColor
+        , Ui.spacing 6
+        ]
+        [ Ui.el [ Ui.width Ui.fill ] (Ui.text session.email)
+        , Input.button
+            [ Font.color inkSoftColor
+            , Font.size 12
+            ]
+            { onPress = Just SignOut, label = Ui.text "Sign out" }
+        ]
+
+
+-- Editor -----------------------------------------------------------
+
+editor : Model -> Session -> Element Msg
+editor model session =
     case model.selected of
         Nothing ->
-            section [ class "editor empty" ]
-                [ p [ class "placeholder" ]
-                    [ text "Select a page on the left, or create a new one." ]
+            Ui.el
+                [ Ui.width Ui.fill
+                , Ui.height Ui.fill
+                , Background.color editorColor
                 ]
+                (Ui.el
+                    [ Ui.centerX
+                    , Ui.centerY
+                    , Font.color inkFaintColor
+                    , Font.size 15
+                    ]
+                    (Ui.text "Select a page on the left, or create a new one.")
+                )
 
         Just pageId ->
-            section [ class "editor" ]
-                [ div [ class "editor-header" ]
-                    [ saveIndicator model.saveState ]
-                , textarea
-                    -- sky-key tells Sky.Live's diff to treat the
-                    -- textarea as a distinct element per page.
-                    -- Without it the browser keeps the user-typed
-                    -- value across page switches and the new
-                    -- model.draft is ignored (textarea DOM state is
-                    -- sticky once the user has interacted with it).
-                    [ attribute "sky-key" (String.fromInt pageId)
-                    , class "editor-area"
-                    , value model.draft
-                    , onInput EditDraft
-                    , placeholder "Start writing..."
-                    ]
-                    []
+            Ui.column
+                [ Ui.width Ui.fill
+                , Ui.height Ui.fill
+                , Background.color editorColor
+                ]
+                [ editorHeader model
+                , shareRow model session
+                , editorArea model pageId
                 ]
 
 
-saveIndicator : SaveState -> VNode
+editorHeader : Model -> Element Msg
+editorHeader model =
+    Ui.row
+        [ Ui.width Ui.fill
+        , Ui.paddingXY 28 14
+        , Border.color chipBorder
+        , Border.widthEach { top = 0, right = 0, bottom = 1, left = 0 }
+        , Ui.spacing 12
+        ]
+        [ Ui.el [ Ui.width Ui.fill ] Ui.none
+        , saveIndicator model.saveState
+        ]
+
+
+saveIndicator : SaveState -> Element Msg
 saveIndicator state =
-    case state of
-        Saved ->
-            span [ class "save-state saved" ] [ text "Saved" ]
+    let
+        ( label, bg, fg ) =
+            case state of
+                Saved ->
+                    ( "Saved", savedBg, savedFg )
 
-        Saving ->
-            span [ class "save-state saving" ] [ text "Saving..." ]
+                Saving ->
+                    ( "Saving...", savingBg, savingFg )
 
-        SaveError errMsg ->
-            span [ class "save-state error" ] [ text errMsg ]
+                SaveError errMsg ->
+                    ( errMsg, errorBg, errorFg )
+    in
+        Ui.el
+            [ Font.size 12
+            , Font.color fg
+            , Background.color bg
+            , Ui.paddingXY 10 4
+            , Border.rounded 10
+            ]
+            (Ui.text label)
 
 
-maybeNotice : String -> VNode
-maybeNotice notice =
-    if notice == "" then
-        text ""
-    else
-        div [ class "notice" ] [ text notice ]
+shareRow : Model -> Session -> Element Msg
+shareRow model session =
+    Ui.column
+        [ Ui.width Ui.fill
+        , Ui.paddingXY 28 12
+        , Ui.spacing 8
+        , Border.color chipBorder
+        , Border.widthEach { top = 0, right = 0, bottom = 1, left = 0 }
+        ]
+        [ Ui.row
+            [ Ui.width Ui.fill
+            , Ui.spacing 10
+            ]
+            [ Ui.el
+                [ Font.size 12
+                , Font.color inkSoftColor
+                , Font.bold
+                ]
+                (Ui.text "SHARED WITH")
+            , Ui.row [ Ui.spacing 6 ] (List.map shareChip model.shares)
+            ]
+        , Ui.row
+            [ Ui.width Ui.fill
+            , Ui.spacing 8
+            ]
+            [ Ui.el
+                [ Ui.width (Ui.px 280) ]
+                (Input.email []
+                    { onChange = UpdateShareInput
+                    , text = model.shareInput
+                    , placeholder = Just (Input.placeholder [] (Ui.text "Invite to edit: name@example.com"))
+                    , label = Input.labelHidden "Invite to edit"
+                    }
+                )
+            , Input.button
+                [ Background.color warmColor
+                , Font.color warmInk
+                , Font.bold
+                , Font.size 13
+                , Ui.paddingXY 14 6
+                , Border.rounded 4
+                ]
+                { onPress = Just SharePage, label = Ui.text "Invite" }
+            ]
+        ]
+
+
+shareChip : Db.Share -> Element Msg
+shareChip s =
+    Ui.row
+        [ Background.color chipColor
+        , Border.color chipBorder
+        , Border.width 1
+        , Border.rounded 12
+        , Ui.paddingXY 8 3
+        , Ui.spacing 6
+        , Font.size 12
+        , Font.color inkColor
+        ]
+        [ Ui.text s.email
+        , Ui.el [ Font.color inkSoftColor, Font.size 11 ] (Ui.text ("- " ++ s.role))
+        , Input.button
+            [ Font.color inkFaintColor
+            , Font.size 12
+            ]
+            { onPress = Just (UnsharePage s.email), label = Ui.text "x" }
+        ]
+
+
+editorArea : Model -> Int -> Element Msg
+editorArea model pageId =
+    Ui.el
+        [ Ui.width Ui.fill
+        , Ui.height Ui.fill
+        , Ui.paddingXY 32 20
+        ]
+        (Input.multiline
+            [ Ui.width Ui.fill
+            , Ui.height Ui.fill
+            , Font.size 16
+            , Font.color inkColor
+            , Background.color editorColor
+            , Border.width 0
+            , Ui.htmlAttribute "sky-key" (String.fromInt pageId)
+            ]
+            { onChange = EditDraft
+            , text = model.draft
+            , placeholder = Just (Input.placeholder [] (Ui.text "Start writing..."))
+            , label = Input.labelHidden "Page content"
+            , spellcheck = True
+            }
+        )

@@ -1,15 +1,6 @@
 module Update exposing (update)
 
--- Update -- message handlers for mini-Notion.
---
--- Every database call is a Task. We never block the message loop on
--- I/O. Cmd.perform takes a Task and a constructor that accepts the
--- Result, and Sky.Live runs the Task asynchronously, then dispatches
--- the resulting Msg back through update.
---
--- The pattern is the same every time: update is pure, returns a new
--- Model and a Cmd; the Cmd runs asynchronously; when it finishes it
--- fires another Msg with the result.
+-- Update -- message handlers for mini-Notion Part 2.
 
 import Sky.Core.Prelude exposing (..)
 import Sky.Core.Error as Error exposing (Error)
@@ -19,12 +10,80 @@ import Std.Cmd as Cmd
 import Std.Log exposing (println)
 
 import Model exposing (..)
+import Auth
 import Db
 
 
 update : Msg -> Model -> ( Model, Cmd.Cmd Msg )
 update msg model =
     case msg of
+        -- Auth routing -------------------------------------------------
+        NavigateSignIn ->
+            ( { model | page = SignInView, authError = "" }, Cmd.none )
+
+        NavigateSignUp ->
+            ( { model | page = SignUpView, authError = "" }, Cmd.none )
+
+        UpdateSignInEmail v ->
+            ( { model | signInEmail = v }, Cmd.none )
+
+        UpdateSignInPassword v ->
+            ( { model | signInPassword = v }, Cmd.none )
+
+        UpdateSignUpEmail v ->
+            ( { model | signUpEmail = v }, Cmd.none )
+
+        UpdateSignUpPassword v ->
+            ( { model | signUpPassword = v }, Cmd.none )
+
+        SubmitSignIn ->
+            ( { model | authError = "" }
+            , Cmd.perform
+                (Auth.login model.signInEmail model.signInPassword)
+                SignedIn
+            )
+
+        SubmitSignUp ->
+            ( { model | authError = "" }
+            , Cmd.perform
+                (Auth.register model.signUpEmail model.signUpPassword)
+                SignedUp
+            )
+
+        SignedIn (Ok session) ->
+            ( { model
+                | session = Just session
+                , page = AppView
+                , signInPassword = ""
+                , signInEmail = ""
+              }
+            , Cmd.perform (Db.listPages session.id session.email) PagesLoaded
+            )
+
+        SignedIn (Err e) ->
+            ( { model | authError = friendlyAuthError e, signInPassword = "" }
+            , Cmd.none
+            )
+
+        SignedUp (Ok session) ->
+            ( { model
+                | session = Just session
+                , page = AppView
+                , signUpPassword = ""
+                , signUpEmail = ""
+              }
+            , Cmd.perform (Db.listPages session.id session.email) PagesLoaded
+            )
+
+        SignedUp (Err e) ->
+            ( { model | authError = friendlyAuthError e, signUpPassword = "" }
+            , Cmd.none
+            )
+
+        SignOut ->
+            ( { initialModel | page = SignInView }, Cmd.none )
+
+        -- Pages --------------------------------------------------------
         PagesLoaded (Ok pages) ->
             let
                 firstId =
@@ -49,7 +108,7 @@ update msg model =
                     , draft = draft
                     , saveState = Saved
                   }
-                , Cmd.none
+                , loadSharesIfSelected firstId
                 )
 
         PagesLoaded (Err e) ->
@@ -62,9 +121,17 @@ update msg model =
                 )
 
         SelectPage pageId ->
-            ( { model | selected = Just pageId, saveState = Saved }
-            , Cmd.perform (Db.getPage pageId model.session.id) PageContentLoaded
-            )
+            case model.session of
+                Just s ->
+                    ( { model | selected = Just pageId, saveState = Saved }
+                    , Cmd.batch
+                        [ Cmd.perform (Db.getPage pageId s.id s.email) PageContentLoaded
+                        , Cmd.perform (Db.listShares pageId) SharesLoaded
+                        ]
+                    )
+
+                Nothing ->
+                    ( model, Cmd.none )
 
         PageContentLoaded (Ok (Just page)) ->
             ( { model | draft = page.content, saveState = Saved }
@@ -86,9 +153,14 @@ update msg model =
                 )
 
         NewPage ->
-            ( model
-            , Cmd.perform (Db.createPage model.session.id) PageCreated
-            )
+            case model.session of
+                Just s ->
+                    ( model
+                    , Cmd.perform (Db.createPage s.id) PageCreated
+                    )
+
+                Nothing ->
+                    ( model, Cmd.none )
 
         PageCreated (Ok newId) ->
             let
@@ -97,6 +169,7 @@ update msg model =
                     , title = "Untitled"
                     , content = ""
                     , updatedAt = ""
+                    , access = "owner"
                     }
             in
                 ( { model
@@ -104,6 +177,7 @@ update msg model =
                     , selected = Just newId
                     , draft = ""
                     , saveState = Saved
+                    , shares = []
                   }
                 , Cmd.none
                 )
@@ -118,9 +192,14 @@ update msg model =
                 )
 
         DeletePage pageId ->
-            ( model
-            , Cmd.perform (Db.deletePage pageId model.session.id) PageDeleted
-            )
+            case model.session of
+                Just s ->
+                    ( model
+                    , Cmd.perform (Db.deletePage pageId s.id) PageDeleted
+                    )
+
+                Nothing ->
+                    ( model, Cmd.none )
 
         PageDeleted (Ok pageId) ->
             let
@@ -160,23 +239,41 @@ update msg model =
                 , Cmd.none
                 )
 
+        -- Editor -------------------------------------------------------
         EditDraft newDraft ->
-            -- Sky.Live's [live] input = "debounce" mode coalesces these;
-            -- the server only sees an EditDraft message after the user
-            -- pauses typing for the configured debounce window.
-            ( { model | draft = newDraft, saveState = Saving }
-            , Cmd.perform (saveDraftTask model.session.id model.selected newDraft) PageSaved
-            )
-
-        SaveDraft ->
-            ( { model | saveState = Saving }
-            , Cmd.perform (saveDraftTask model.session.id model.selected model.draft) PageSaved
+            ( { model
+                | draft = newDraft
+                , saveState = Saving
+                , lastTypedAtTick = model.lastTypedAtTick + 1
+              }
+            , Cmd.perform
+                (saveDraftTask model newDraft)
+                PageSaved
             )
 
         PageSaved (Ok _) ->
-            ( { model | saveState = Saved }
-            , Cmd.none
-            )
+            let
+                newTitle =
+                    titleFrom model.draft
+
+                updatedPages =
+                    List.map
+                        (\p ->
+                            case model.selected of
+                                Just sid ->
+                                    if p.id == sid then
+                                        { p | title = newTitle }
+                                    else
+                                        p
+
+                                Nothing ->
+                                    p
+                        )
+                        model.pages
+            in
+                ( { model | saveState = Saved, pages = updatedPages }
+                , Cmd.none
+                )
 
         PageSaved (Err e) ->
             let
@@ -187,17 +284,133 @@ update msg model =
                 , Cmd.none
                 )
 
+        -- Sharing ------------------------------------------------------
+        UpdateShareInput v ->
+            ( { model | shareInput = v }, Cmd.none )
 
--- ─── Helpers ─────────────────────────────────────────────────────
+        SharePage ->
+            case ( model.session, model.selected, String.trim model.shareInput ) of
+                ( Just s, Just pageId, trimmedEmail ) ->
+                    if trimmedEmail == "" || trimmedEmail == s.email then
+                        ( { model | notice = "Cannot share with yourself or empty email." }
+                        , Cmd.none
+                        )
+                    else
+                        ( { model | shareInput = "" }
+                        , Cmd.perform
+                            (Db.addShare pageId trimmedEmail "editor" s.id)
+                            ShareAdded
+                        )
 
-saveDraftTask : Int -> Maybe Int -> String -> Task Error Int
-saveDraftTask ownerId selected draft =
-    case selected of
+                _ ->
+                    ( model, Cmd.none )
+
+        ShareAdded (Ok _) ->
+            case model.selected of
+                Just pageId ->
+                    ( model
+                    , Cmd.perform (Db.listShares pageId) SharesLoaded
+                    )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        ShareAdded (Err e) ->
+            let
+                _ =
+                    println ("[mini-notion] ShareAdded: " ++ Error.toString e)
+            in
+                ( { model | notice = "Could not share page." }, Cmd.none )
+
+        UnsharePage email ->
+            case ( model.session, model.selected ) of
+                ( Just _, Just pageId ) ->
+                    ( model
+                    , Cmd.perform (Db.removeShare pageId email) ShareRemoved
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        ShareRemoved (Ok _) ->
+            case model.selected of
+                Just pageId ->
+                    ( model
+                    , Cmd.perform (Db.listShares pageId) SharesLoaded
+                    )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        ShareRemoved (Err _) ->
+            ( { model | notice = "Could not remove share." }, Cmd.none )
+
+        SharesLoaded (Ok shares) ->
+            ( { model | shares = shares }, Cmd.none )
+
+        SharesLoaded (Err _) ->
+            ( { model | shares = [] }, Cmd.none )
+
+        -- Collab Tick --------------------------------------------------
+        -- Nested cases (rather than a tuple-destructure case) so the
+        -- Sky->Go codegen doesn't emit duplicate variable bindings
+        -- when two branches both bind `Just s`. See v0.13.1 codegen
+        -- regression around line 1126 of generated main.go.
+        Tick ->
+            case model.session of
+                Nothing ->
+                    ( model, Cmd.none )
+
+                Just s ->
+                    case model.selected of
+                        Just pageId ->
+                            ( model
+                            , Cmd.batch
+                                [ Cmd.perform (Db.getPage pageId s.id s.email) PageContentReloaded
+                                , Cmd.perform (Db.listPages s.id s.email) PagesLoaded
+                                ]
+                            )
+
+                        Nothing ->
+                            ( model
+                            , Cmd.perform (Db.listPages s.id s.email) PagesLoaded
+                            )
+
+        PageContentReloaded (Ok (Just page)) ->
+            -- Avoid clobbering an edit in flight: only update draft if
+            -- the user has not typed recently (saveState back to Saved)
+            -- and the remote content differs.
+            if model.saveState == Saved && page.content /= model.draft then
+                ( { model | draft = page.content }, Cmd.none )
+            else
+                ( model, Cmd.none )
+
+        PageContentReloaded _ ->
+            ( model, Cmd.none )
+
+
+
+-- Helpers ----------------------------------------------------------
+
+
+saveDraftTask : Model -> String -> Task Error Int
+saveDraftTask model draft =
+    case ( model.session, model.selected ) of
+        ( Just s, Just pageId ) ->
+            Db.savePage pageId s.id s.email (titleFrom draft) draft
+
+        _ ->
+            Task.succeed 0
+
+
+loadSharesIfSelected : Maybe Int -> Cmd.Cmd Msg
+loadSharesIfSelected sel =
+    case sel of
         Just pageId ->
-            Db.savePage pageId ownerId (titleFrom draft) draft
+            Cmd.perform (Db.listShares pageId) SharesLoaded
 
         Nothing ->
-            Task.succeed 0
+            Cmd.none
 
 
 titleFrom : String -> String
@@ -215,3 +428,17 @@ titleFrom draft =
 
         Nothing ->
             "Untitled"
+
+
+friendlyAuthError : Error -> String
+friendlyAuthError e =
+    let
+        s =
+            Error.toString e
+    in
+        if String.contains "UNIQUE" s || String.contains "unique" s then
+            "That email is already registered. Try signing in."
+        else if String.contains "wrong email or password" s then
+            "Wrong email or password."
+        else
+            s
