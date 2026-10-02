@@ -24,7 +24,6 @@ import Std.Live as Live
 import Std.Tui as Tui
 import Std.Ui as Ui
 import Std.Log exposing (println)
-
 import App
 import Model exposing (..)
 import Update exposing (update)
@@ -65,12 +64,8 @@ bannerTui =
 
 main =
     let
-        args =
-            System.args () |> Task.run |> Result.withDefault []
-
-        isTui =
-            List.member "--tui" args
-
+        args = System.args () |> Task.run |> Result.withDefault []
+        isTui = List.member "--tui" args
         _ =
             if isTui then
                 let
@@ -78,25 +73,26 @@ main =
                 in
                     Task.run
                         (Tui.app
-                            { init = \flags -> App.init flags
-                            , update = update
-                            , view = View.view
-                            , subscriptions = App.subscriptions
-                            }
-                        )
+                            (Tui.config
+                                { init = \flags -> App.init flags
+                                , update = update
+                                , view = View.view
+                                , subscriptions = App.subscriptions
+                                }))
+
             else
                 let
                     _ = Task.run bannerWeb
                 in
                     Task.run
                         (Live.app
-                            { init = \flags -> App.init flags
-                            , update = update
-                            , view = viewLive
-                            , subscriptions = App.subscriptions
-                            , routes = []
-                            , notFound = ()
-                            }
-                        )
+                            (Live.config
+                                { init = \flags -> App.init flags
+                                , update = update
+                                , view = viewLive
+                                , subscriptions = App.subscriptions
+                                , routes = []
+                                , notFound = ()
+                                }))
     in
         ()
