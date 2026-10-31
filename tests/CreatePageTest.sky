@@ -1,0 +1,81 @@
+module CreatePageTest exposing (tests)
+
+{-| Regression test for `Db.createPage`.
+
+`createPage` must return the id of the row it inserted. It used to run the
+INSERT and then `SELECT last_insert_rowid()` as a second statement. Every call
+opens the pooled database handle, so the second statement could run on another
+connection and return 0 or another page's id.
+
+This test creates many pages at once (`Task.parallel`) and checks that every
+returned id is a real page owned by the test owner and that no two ids are the
+same. It removes its own rows at the end. The race is not deterministic, so a
+wide fan-out is used to make the old code fail on every run.
+
+Run with `sky test tests/CreatePageTest.sky`.
+-}
+
+import Sky.Core.Prelude exposing (..)
+import Sky.Core.Error as Error exposing (Error)
+import Sky.Core.List as List
+import Sky.Core.Task as Task
+import Sky.Test as Test exposing (Test)
+import Db
+
+
+testOwner : Int
+testOwner =
+    987654321
+
+
+fanOut : Int
+fanOut =
+    64
+
+
+{-| The ids that createPage returned, and the ids of the pages that
+`listPages` can see for the test owner afterwards.
+-}
+scenario : Result Error ( List Int, List Int )
+scenario =
+    Db.initSchema
+        |> Task.andThen
+               (\_ ->
+                   Task.parallel (List.repeat fanOut (Db.createPage testOwner)))
+        |> Task.andThen
+               (\ids ->
+                   Db.listPages testOwner "nobody@example.invalid"
+                       |> Task.map (\pages -> ( ids, List.map .id pages )))
+        |> Task.andThen
+               (\( ids, seen ) ->
+                   Task.sequence
+                       (List.map (\p -> Db.deletePage p testOwner) seen)
+                       |> Task.map (\_ -> ( ids, seen )))
+        |> Task.run
+
+
+tests : List Test
+tests =
+    [ Test.test
+          "every createPage returns a distinct id"
+          (\_ ->
+              case scenario of
+
+                  Ok ( ids, _ ) ->
+                      Test.equal fanOut (List.length (List.unique ids))
+
+                  Err e ->
+                      Test.fail (Error.toString e))
+    , Test.test
+          "every returned id is a page the owner holds"
+          (\_ ->
+              case scenario of
+
+                  Ok ( ids, seen ) ->
+                      Test.equal
+                          []
+                          (List.filter (\i -> not (List.member i seen)) ids)
+
+                  Err e ->
+                      Test.fail (Error.toString e))
+    ]
