@@ -17,14 +17,12 @@ import Std.Ui.Font as Font
 import Std.Ui.Input as Input
 import Std.Ui.Events as Events
 import Std.Ui.Region as Region
-
 import Model exposing (..)
 import Db
 import Auth exposing (Session)
 
 
 -- Design tokens ----------------------------------------------------
-
 bgColor : Ui.Color
 bgColor =
     Ui.rgb 247 245 240
@@ -111,10 +109,10 @@ errorFg =
 
 
 -- Top-level switch -------------------------------------------------
-
 view : Model -> Element Msg
 view model =
     case model.page of
+
         SignInView ->
             signInPage model
 
@@ -123,6 +121,7 @@ view model =
 
         AppView ->
             case model.session of
+
                 Just session ->
                     appShell model session
 
@@ -131,7 +130,6 @@ view model =
 
 
 -- Auth pages -------------------------------------------------------
-
 authShell : List (Element Msg) -> Element Msg
 authShell children =
     Ui.el
@@ -150,18 +148,13 @@ authShell children =
             , Border.rounded 8
             , Ui.padding 28
             ]
-            children
-        )
+            children)
 
 
 authTitle : String -> Element Msg
 authTitle s =
     Ui.el
-        [ Region.heading 1
-        , Font.size 22
-        , Font.bold
-        , Font.color inkColor
-        ]
+        [ Region.heading 1, Font.size 22, Font.bold, Font.color inkColor ]
         (Ui.text s)
 
 
@@ -169,12 +162,10 @@ authError : String -> Element Msg
 authError msg =
     if msg == "" then
         Ui.none
+
     else
         Ui.el
-            [ Font.color errorFg
-            , Font.size 13
-            , Ui.paddingXY 0 4
-            ]
+            [ Font.color errorFg, Font.size 13, Ui.paddingXY 0 4 ]
             (Ui.text msg)
 
 
@@ -196,18 +187,11 @@ primaryButton label onClick =
 altLink : String -> String -> Msg -> Element Msg
 altLink prefix linkText onClick =
     Ui.row
-        [ Ui.centerX
-        , Ui.spacing 6
-        , Font.size 13
-        , Font.color inkSoftColor
-        ]
+        [ Ui.centerX, Ui.spacing 6, Font.size 13, Font.color inkSoftColor ]
         [ Ui.text prefix
         , Input.button
-            [ Font.color inkColor
-            , Font.bold
-            , Events.onClick onClick
-            ]
-            { onPress = Just onClick, label = Ui.text linkText }
+              [ Font.color inkColor, Font.bold, Events.onClick onClick ]
+              { onPress = Just onClick, label = Ui.text linkText }
         ]
 
 
@@ -216,20 +200,21 @@ signInPage model =
     authShell
         [ authTitle "Sign in"
         , Input.email
-            [ Ui.width Ui.fill ]
-            { onChange = UpdateSignInEmail
-            , text = model.signInEmail
-            , placeholder = Just (Input.placeholder [] (Ui.text "you@example.com"))
-            , label = Input.labelHidden "Email"
-            }
+              [ Ui.width Ui.fill ]
+              { onChange = UpdateSignInEmail
+              , text = model.signInEmail
+              , placeholder =
+                  Just (Input.placeholder [] (Ui.text "you@example.com"))
+              , label = Input.labelHidden "Email"
+              }
         , Input.currentPassword
-            [ Ui.width Ui.fill ]
-            { onChange = UpdateSignInPassword
-            , text = model.signInPassword
-            , placeholder = Just (Input.placeholder [] (Ui.text "Password"))
-            , label = Input.labelHidden "Password"
-            , show = False
-            }
+              [ Ui.width Ui.fill ]
+              { onChange = UpdateSignInPassword
+              , text = model.signInPassword
+              , placeholder = Just (Input.placeholder [] (Ui.text "Password"))
+              , label = Input.labelHidden "Password"
+              , show = False
+              }
         , authError model.authError
         , primaryButton "Sign in" SubmitSignIn
         , altLink "No account?" "Sign up" NavigateSignUp
@@ -241,20 +226,22 @@ signUpPage model =
     authShell
         [ authTitle "Create account"
         , Input.email
-            [ Ui.width Ui.fill ]
-            { onChange = UpdateSignUpEmail
-            , text = model.signUpEmail
-            , placeholder = Just (Input.placeholder [] (Ui.text "you@example.com"))
-            , label = Input.labelHidden "Email"
-            }
+              [ Ui.width Ui.fill ]
+              { onChange = UpdateSignUpEmail
+              , text = model.signUpEmail
+              , placeholder =
+                  Just (Input.placeholder [] (Ui.text "you@example.com"))
+              , label = Input.labelHidden "Email"
+              }
         , Input.newPassword
-            [ Ui.width Ui.fill ]
-            { onChange = UpdateSignUpPassword
-            , text = model.signUpPassword
-            , placeholder = Just (Input.placeholder [] (Ui.text "Password (min 8 chars)"))
-            , label = Input.labelHidden "Password"
-            , show = False
-            }
+              [ Ui.width Ui.fill ]
+              { onChange = UpdateSignUpPassword
+              , text = model.signUpPassword
+              , placeholder =
+                  Just (Input.placeholder [] (Ui.text "Password (min 8 chars)"))
+              , label = Input.labelHidden "Password"
+              , show = False
+              }
         , authError model.authError
         , primaryButton "Create account" SubmitSignUp
         , altLink "Already have one?" "Sign in" NavigateSignIn
@@ -262,21 +249,14 @@ signUpPage model =
 
 
 -- App shell --------------------------------------------------------
-
 appShell : Model -> Session -> Element Msg
 appShell model session =
     Ui.row
-        [ Ui.width Ui.fill
-        , Ui.height (Ui.vh 100)
-        , Background.color bgColor
-        ]
-        [ sidebar model session
-        , editor model session
-        ]
+        [ Ui.width Ui.fill, Ui.height (Ui.vh 100), Background.color bgColor ]
+        [ sidebar model session, editor model session ]
 
 
 -- Sidebar ----------------------------------------------------------
-
 sidebar : Model -> Session -> Element Msg
 sidebar model session =
     Ui.column
@@ -288,13 +268,13 @@ sidebar model session =
         ]
         [ sidebarHeader
         , Ui.column
-            [ Ui.width Ui.fill
-            , Ui.spacing 2
-            , Ui.paddingXY 8 6
-            , Ui.scrollbarY
-            , Ui.height Ui.fill
-            ]
-            (List.map (pageRow model.selected) model.pages)
+              [ Ui.width Ui.fill
+              , Ui.spacing 2
+              , Ui.paddingXY 8 6
+              , Ui.scrollbarY
+              , Ui.height Ui.fill
+              ]
+              (List.map (pageRow model.selected) model.pages)
         , sidebarFooter session
         ]
 
@@ -309,21 +289,21 @@ sidebarHeader =
         , Border.widthEach { top = 0, right = 0, bottom = 1, left = 0 }
         ]
         [ Ui.el
-            [ Font.size 13
-            , Font.bold
-            , Font.color inkSoftColor
-            , Ui.width Ui.fill
-            ]
-            (Ui.text "PAGES")
+              [ Font.size 13
+              , Font.bold
+              , Font.color inkSoftColor
+              , Ui.width Ui.fill
+              ]
+              (Ui.text "PAGES")
         , Input.button
-            [ Background.color warmColor
-            , Font.color warmInk
-            , Font.bold
-            , Font.size 12
-            , Ui.paddingXY 10 4
-            , Border.rounded 4
-            ]
-            { onPress = Just NewPage, label = Ui.text "+ New" }
+              [ Background.color warmColor
+              , Font.color warmInk
+              , Font.bold
+              , Font.size 12
+              , Ui.paddingXY 10 4
+              , Border.rounded 4
+              ]
+              { onPress = Just NewPage, label = Ui.text "+ New" }
         ]
 
 
@@ -332,21 +312,22 @@ pageRow selected page =
     let
         isSelected =
             case selected of
+
                 Just s ->
                     s == page.id
 
                 Nothing ->
                     False
-
         bg =
             if isSelected then
                 sidebarSelected
+
             else
                 sidebarColor
-
         accessChip =
             if page.access == "owner" then
                 Ui.none
+
             else
                 Ui.el
                     [ Font.size 10
@@ -367,11 +348,8 @@ pageRow selected page =
             , Ui.pointer
             ]
             [ Ui.el
-                [ Font.size 14
-                , Font.color inkColor
-                , Ui.width Ui.fill
-                ]
-                (Ui.text (truncate 36 page.title))
+                  [ Font.size 14, Font.color inkColor, Ui.width Ui.fill ]
+                  (Ui.text (truncate 36 page.title))
             , accessChip
             ]
 
@@ -380,6 +358,7 @@ truncate : Int -> String -> String
 truncate n s =
     if String.length s <= n then
         s
+
     else
         String.slice 0 (n - 1) s ++ "..."
 
@@ -397,18 +376,16 @@ sidebarFooter session =
         ]
         [ Ui.el [ Ui.width Ui.fill ] (Ui.text session.email)
         , Input.button
-            [ Font.color inkSoftColor
-            , Font.size 12
-            ]
-            { onPress = Just SignOut, label = Ui.text "Sign out" }
+              [ Font.color inkSoftColor, Font.size 12 ]
+              { onPress = Just SignOut, label = Ui.text "Sign out" }
         ]
 
 
 -- Editor -----------------------------------------------------------
-
 editor : Model -> Session -> Element Msg
 editor model session =
     case model.selected of
+
         Nothing ->
             Ui.el
                 [ Ui.width Ui.fill
@@ -421,8 +398,7 @@ editor model session =
                     , Font.color inkFaintColor
                     , Font.size 15
                     ]
-                    (Ui.text "Select a page on the left, or create a new one.")
-                )
+                    (Ui.text "Select a page on the left, or create a new one."))
 
         Just pageId ->
             Ui.column
@@ -445,9 +421,7 @@ editorHeader model =
         , Border.widthEach { top = 0, right = 0, bottom = 1, left = 0 }
         , Ui.spacing 12
         ]
-        [ Ui.el [ Ui.width Ui.fill ] Ui.none
-        , saveIndicator model.saveState
-        ]
+        [ Ui.el [ Ui.width Ui.fill ] Ui.none, saveIndicator model.saveState ]
 
 
 saveIndicator : SaveState -> Element Msg
@@ -455,6 +429,7 @@ saveIndicator state =
     let
         ( label, bg, fg ) =
             case state of
+
                 Saved ->
                     ( "Saved", savedBg, savedFg )
 
@@ -484,40 +459,37 @@ shareRow model session =
         , Border.widthEach { top = 0, right = 0, bottom = 1, left = 0 }
         ]
         [ Ui.row
-            [ Ui.width Ui.fill
-            , Ui.spacing 10
-            ]
-            [ Ui.el
-                [ Font.size 12
-                , Font.color inkSoftColor
-                , Font.bold
-                ]
-                (Ui.text "SHARED WITH")
-            , Ui.row [ Ui.spacing 6 ] (List.map shareChip model.shares)
-            ]
+              [ Ui.width Ui.fill, Ui.spacing 10 ]
+              [ Ui.el
+                    [ Font.size 12, Font.color inkSoftColor, Font.bold ]
+                    (Ui.text "SHARED WITH")
+              , Ui.row [ Ui.spacing 6 ] (List.map shareChip model.shares)
+              ]
         , Ui.row
-            [ Ui.width Ui.fill
-            , Ui.spacing 8
-            ]
-            [ Ui.el
-                [ Ui.width (Ui.px 280) ]
-                (Input.email []
-                    { onChange = UpdateShareInput
-                    , text = model.shareInput
-                    , placeholder = Just (Input.placeholder [] (Ui.text "Invite to edit: name@example.com"))
-                    , label = Input.labelHidden "Invite to edit"
-                    }
-                )
-            , Input.button
-                [ Background.color warmColor
-                , Font.color warmInk
-                , Font.bold
-                , Font.size 13
-                , Ui.paddingXY 14 6
-                , Border.rounded 4
-                ]
-                { onPress = Just SharePage, label = Ui.text "Invite" }
-            ]
+              [ Ui.width Ui.fill, Ui.spacing 8 ]
+              [ Ui.el
+                    [ Ui.width (Ui.px 280) ]
+                    (Input.email
+                        []
+                        { onChange = UpdateShareInput
+                        , text = model.shareInput
+                        , placeholder =
+                            Just
+                                (Input.placeholder
+                                    []
+                                    (Ui.text "Invite to edit: name@example.com"))
+                        , label = Input.labelHidden "Invite to edit"
+                        })
+              , Input.button
+                    [ Background.color warmColor
+                    , Font.color warmInk
+                    , Font.bold
+                    , Font.size 13
+                    , Ui.paddingXY 14 6
+                    , Border.rounded 4
+                    ]
+                    { onPress = Just SharePage, label = Ui.text "Invite" }
+              ]
         ]
 
 
@@ -534,22 +506,19 @@ shareChip s =
         , Font.color inkColor
         ]
         [ Ui.text s.email
-        , Ui.el [ Font.color inkSoftColor, Font.size 11 ] (Ui.text ("- " ++ s.role))
+        , Ui.el
+              [ Font.color inkSoftColor, Font.size 11 ]
+              (Ui.text ("- " ++ s.role))
         , Input.button
-            [ Font.color inkFaintColor
-            , Font.size 12
-            ]
-            { onPress = Just (UnsharePage s.email), label = Ui.text "x" }
+              [ Font.color inkFaintColor, Font.size 12 ]
+              { onPress = Just (UnsharePage s.email), label = Ui.text "x" }
         ]
 
 
 editorArea : Model -> Int -> Element Msg
 editorArea model pageId =
     Ui.el
-        [ Ui.width Ui.fill
-        , Ui.height Ui.fill
-        , Ui.paddingXY 32 20
-        ]
+        [ Ui.width Ui.fill, Ui.height Ui.fill, Ui.paddingXY 32 20 ]
         (Input.multiline
             [ Ui.width Ui.fill
             , Ui.height Ui.fill
@@ -561,8 +530,8 @@ editorArea model pageId =
             ]
             { onChange = EditDraft
             , text = model.draft
-            , placeholder = Just (Input.placeholder [] (Ui.text "Start writing..."))
+            , placeholder =
+                Just (Input.placeholder [] (Ui.text "Start writing..."))
             , label = Input.labelHidden "Page content"
             , spellcheck = True
-            }
-        )
+            })

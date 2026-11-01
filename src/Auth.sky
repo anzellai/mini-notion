@@ -1,9 +1,4 @@
-module Auth exposing
-    ( Session
-    , initSchema
-    , register
-    , login
-    )
+module Auth exposing (Session, initSchema, register, login)
 
 -- Auth -- real password auth via Std.Auth.hashPassword/verifyPassword,
 -- backed by our own users table (so we can co-locate it with pages
@@ -20,7 +15,6 @@ import Sky.Core.String as String
 import Sky.Core.Task as Task
 import Std.Db as StdDb
 import Std.Auth as StdAuth
-
 
 type alias Session =
     { id : Int
@@ -50,6 +44,7 @@ initSchema =
 parseInt : String -> Int
 parseInt s =
     case String.toInt s of
+
         Just n ->
             n
 
@@ -60,82 +55,87 @@ parseInt s =
 -- register: hash the password (pure Result), INSERT a user row, then
 -- read the inserted id back. Lifts the pure Result into the Task
 -- chain via succeed/fail.
-
 register : String -> String -> Task Error Session
 register email password =
     let
-        emailLower =
-            String.toLower email
+        emailLower = String.toLower email
     in
         case StdAuth.hashPassword password of
+
             Err msg ->
                 Task.fail msg
 
             Ok hash ->
                 StdDb.open "sqlite" dbPath
                     |> Task.andThen
-                        (\db ->
-                            StdDb.exec db
-                                "INSERT INTO users (email, password_hash) VALUES (?, ?)"
-                                [ emailLower, hash ]
-                                |> Task.andThen
-                                    (\_ ->
-                                        StdDb.query db
-                                            "SELECT id FROM users WHERE email = ? LIMIT 1"
-                                            [ emailLower ]
-                                    )
-                        )
+                           (\db ->
+                               StdDb.exec
+                                   db
+                                   "INSERT INTO users (email, password_hash) VALUES (?, ?)"
+                                   [ emailLower, hash ]
+                                   |> Task.andThen
+                                          (\_ ->
+                                              StdDb.query
+                                                  db
+                                                  "SELECT id FROM users WHERE email = ? LIMIT 1"
+                                                  [ emailLower ]))
                     |> Task.map
-                        (\rows ->
-                            case List.head rows of
-                                Just row ->
-                                    { id = parseInt (StdDb.getField "id" row)
-                                    , email = emailLower
-                                    , role = "user"
-                                    , token = ""
-                                    }
+                           (\rows ->
+                               case List.head rows of
 
-                                Nothing ->
-                                    { id = 0, email = emailLower, role = "user", token = "" }
-                        )
+                                   Just row ->
+                                       { id = parseInt (StdDb.getField "id" row)
+                                       , email = emailLower
+                                       , role = "user"
+                                       , token = ""
+                                       }
+
+                                   Nothing ->
+                                       { id = 0
+                                       , email = emailLower
+                                       , role = "user"
+                                       , token = ""
+                                       })
 
 
 login : String -> String -> Task Error Session
 login email password =
     let
-        emailLower =
-            String.toLower email
+        emailLower = String.toLower email
     in
         StdDb.open "sqlite" dbPath
             |> Task.andThen
-                (\db ->
-                    StdDb.query db
-                        "SELECT id, password_hash, role FROM users WHERE email = ? LIMIT 1"
-                        [ emailLower ]
-                )
+                   (\db ->
+                       StdDb.query
+                           db
+                           "SELECT id, password_hash, role FROM users WHERE email = ? LIMIT 1"
+                           [ emailLower ])
             |> Task.andThen
-                (\rows ->
-                    case List.head rows of
-                        Nothing ->
-                            Task.fail Error.permissionDenied
+                   (\rows ->
+                       case List.head rows of
 
-                        Just row ->
-                            let
-                                hash =
-                                    StdDb.getField "password_hash" row
-                            in
-                                case StdAuth.verifyPassword password hash of
-                                    Err msg ->
-                                        Task.fail msg
+                           Nothing ->
+                               Task.fail Error.permissionDenied
 
-                                    Ok False ->
-                                        Task.fail Error.permissionDenied
+                           Just row ->
+                               let
+                                   hash = StdDb.getField "password_hash" row
+                               in
+                                   case StdAuth.verifyPassword password hash of
 
-                                    Ok True ->
-                                        Task.succeed
-                                            { id = parseInt (StdDb.getField "id" row)
-                                            , email = emailLower
-                                            , role = StdDb.getField "role" row
-                                            , token = ""
-                                            }
-                )
+                                       Err msg ->
+                                           Task.fail msg
+
+                                       Ok False ->
+                                           Task.fail Error.permissionDenied
+
+                                       Ok True ->
+                                           Task.succeed
+                                               { id =
+                                                   parseInt
+                                                       (StdDb.getField "id" row)
+                                               , email = emailLower
+                                               , role =
+                                                   StdDb.getField "role" row
+                                               , token = ""
+                                               })

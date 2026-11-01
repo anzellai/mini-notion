@@ -8,7 +8,6 @@ import Sky.Core.List as List
 import Sky.Core.String as String
 import Std.Cmd as Cmd
 import Std.Log exposing (println)
-
 import Model exposing (..)
 import Auth
 import Db
@@ -17,6 +16,7 @@ import Db
 update : Msg -> Model -> ( Model, Cmd.Cmd Msg )
 update msg model =
     case msg of
+
         -- Auth routing -------------------------------------------------
         NavigateSignIn ->
             ( { model | page = SignInView, authError = "" }, Cmd.none )
@@ -39,23 +39,23 @@ update msg model =
         SubmitSignIn ->
             ( { model | authError = "" }
             , Cmd.perform
-                (Auth.login model.signInEmail model.signInPassword)
-                SignedIn
+                  (Auth.login model.signInEmail model.signInPassword)
+                  SignedIn
             )
 
         SubmitSignUp ->
             ( { model | authError = "" }
             , Cmd.perform
-                (Auth.register model.signUpEmail model.signUpPassword)
-                SignedUp
+                  (Auth.register model.signUpEmail model.signUpPassword)
+                  SignedUp
             )
 
         SignedIn (Ok session) ->
             ( { model
-                | session = Just session
-                , page = AppView
-                , signInPassword = ""
-                , signInEmail = ""
+                  | session = Just session
+                  , page = AppView
+                  , signInPassword = ""
+                  , signInEmail = ""
               }
             , Cmd.perform (Db.listPages session.id session.email) PagesLoaded
             )
@@ -67,10 +67,10 @@ update msg model =
 
         SignedUp (Ok session) ->
             ( { model
-                | session = Just session
-                , page = AppView
-                , signUpPassword = ""
-                , signUpEmail = ""
+                  | session = Just session
+                  , page = AppView
+                  , signUpPassword = ""
+                  , signUpEmail = ""
               }
             , Cmd.perform (Db.listPages session.id session.email) PagesLoaded
             )
@@ -88,14 +88,15 @@ update msg model =
             let
                 firstId =
                     case List.head pages of
+
                         Just p ->
                             Just p.id
 
                         Nothing ->
                             Nothing
-
                 draft =
                     case List.head pages of
+
                         Just p ->
                             p.content
 
@@ -103,10 +104,10 @@ update msg model =
                             ""
             in
                 ( { model
-                    | pages = pages
-                    , selected = firstId
-                    , draft = draft
-                    , saveState = Saved
+                      | pages = pages
+                      , selected = firstId
+                      , draft = draft
+                      , saveState = Saved
                   }
                 , loadSharesIfSelected firstId
                 )
@@ -116,37 +117,35 @@ update msg model =
                 _ =
                     println ("[mini-notion] PagesLoaded: " ++ Error.toString e)
             in
-                ( { model | notice = "Could not load pages." }
-                , Cmd.none
-                )
+                ( { model | notice = "Could not load pages." }, Cmd.none )
 
         SelectPage pageId ->
             case model.session of
+
                 Just s ->
                     ( { model | selected = Just pageId, saveState = Saved }
                     , Cmd.batch
-                        [ Cmd.perform (Db.getPage pageId s.id s.email) PageContentLoaded
-                        , Cmd.perform (Db.listShares pageId) SharesLoaded
-                        ]
+                          [ Cmd.perform
+                                (Db.getPage pageId s.id s.email)
+                                PageContentLoaded
+                          , Cmd.perform (Db.listShares pageId) SharesLoaded
+                          ]
                     )
 
                 Nothing ->
                     ( model, Cmd.none )
 
         PageContentLoaded (Ok (Just page)) ->
-            ( { model | draft = page.content, saveState = Saved }
-            , Cmd.none
-            )
+            ( { model | draft = page.content, saveState = Saved }, Cmd.none )
 
         PageContentLoaded (Ok Nothing) ->
-            ( { model | draft = "", saveState = Saved }
-            , Cmd.none
-            )
+            ( { model | draft = "", saveState = Saved }, Cmd.none )
 
         PageContentLoaded (Err e) ->
             let
                 _ =
-                    println ("[mini-notion] PageContentLoaded: " ++ Error.toString e)
+                    println
+                        ("[mini-notion] PageContentLoaded: " ++ Error.toString e)
             in
                 ( { model | saveState = SaveError "Could not load page." }
                 , Cmd.none
@@ -154,10 +153,9 @@ update msg model =
 
         NewPage ->
             case model.session of
+
                 Just s ->
-                    ( model
-                    , Cmd.perform (Db.createPage s.id) PageCreated
-                    )
+                    ( model, Cmd.perform (Db.createPage s.id) PageCreated )
 
                 Nothing ->
                     ( model, Cmd.none )
@@ -173,11 +171,11 @@ update msg model =
                     }
             in
                 ( { model
-                    | pages = page :: model.pages
-                    , selected = Just newId
-                    , draft = ""
-                    , saveState = Saved
-                    , shares = []
+                      | pages = page :: model.pages
+                      , selected = Just newId
+                      , draft = ""
+                      , saveState = Saved
+                      , shares = []
                   }
                 , Cmd.none
                 )
@@ -187,12 +185,11 @@ update msg model =
                 _ =
                     println ("[mini-notion] PageCreated: " ++ Error.toString e)
             in
-                ( { model | notice = "Could not create page." }
-                , Cmd.none
-                )
+                ( { model | notice = "Could not create page." }, Cmd.none )
 
         DeletePage pageId ->
             case model.session of
+
                 Just s ->
                     ( model
                     , Cmd.perform (Db.deletePage pageId s.id) PageDeleted
@@ -203,19 +200,20 @@ update msg model =
 
         PageDeleted (Ok pageId) ->
             let
-                remaining =
-                    List.filter (\p -> p.id /= pageId) model.pages
-
+                remaining = List.filter (\p -> p.id /= pageId) model.pages
                 newSelected =
                     case model.selected of
+
                         Just s ->
                             if s == pageId then
                                 case List.head remaining of
+
                                     Just p ->
                                         Just p.id
 
                                     Nothing ->
                                         Nothing
+
                             else
                                 Just s
 
@@ -223,9 +221,9 @@ update msg model =
                             Nothing
             in
                 ( { model
-                    | pages = remaining
-                    , selected = newSelected
-                    , draft = ""
+                      | pages = remaining
+                      , selected = newSelected
+                      , draft = ""
                   }
                 , Cmd.none
                 )
@@ -235,40 +233,35 @@ update msg model =
                 _ =
                     println ("[mini-notion] PageDeleted: " ++ Error.toString e)
             in
-                ( { model | notice = "Could not delete page." }
-                , Cmd.none
-                )
+                ( { model | notice = "Could not delete page." }, Cmd.none )
 
         -- Editor -------------------------------------------------------
         EditDraft newDraft ->
             ( { model
-                | draft = newDraft
-                , saveState = Saving
-                , lastTypedAtTick = model.lastTypedAtTick + 1
+                  | draft = newDraft
+                  , saveState = Saving
+                  , lastTypedAtTick = model.lastTypedAtTick + 1
               }
-            , Cmd.perform
-                (saveDraftTask model newDraft)
-                PageSaved
+            , Cmd.perform (saveDraftTask model newDraft) PageSaved
             )
 
         PageSaved (Ok _) ->
             let
-                newTitle =
-                    titleFrom model.draft
-
+                newTitle = titleFrom model.draft
                 updatedPages =
                     List.map
                         (\p ->
                             case model.selected of
+
                                 Just sid ->
                                     if p.id == sid then
                                         { p | title = newTitle }
+
                                     else
                                         p
 
                                 Nothing ->
-                                    p
-                        )
+                                    p)
                         model.pages
             in
                 ( { model | saveState = Saved, pages = updatedPages }
@@ -290,16 +283,21 @@ update msg model =
 
         SharePage ->
             case ( model.session, model.selected, String.trim model.shareInput ) of
+
                 ( Just s, Just pageId, trimmedEmail ) ->
                     if trimmedEmail == "" || trimmedEmail == s.email then
-                        ( { model | notice = "Cannot share with yourself or empty email." }
+                        ( { model
+                              | notice =
+                                  "Cannot share with yourself or empty email."
+                          }
                         , Cmd.none
                         )
+
                     else
                         ( { model | shareInput = "" }
                         , Cmd.perform
-                            (Db.addShare pageId trimmedEmail "editor" s.id)
-                            ShareAdded
+                              (Db.addShare pageId trimmedEmail "editor" s.id)
+                              ShareAdded
                         )
 
                 _ ->
@@ -307,10 +305,9 @@ update msg model =
 
         ShareAdded (Ok _) ->
             case model.selected of
+
                 Just pageId ->
-                    ( model
-                    , Cmd.perform (Db.listShares pageId) SharesLoaded
-                    )
+                    ( model, Cmd.perform (Db.listShares pageId) SharesLoaded )
 
                 Nothing ->
                     ( model, Cmd.none )
@@ -324,6 +321,7 @@ update msg model =
 
         UnsharePage email ->
             case ( model.session, model.selected ) of
+
                 ( Just _, Just pageId ) ->
                     ( model
                     , Cmd.perform (Db.removeShare pageId email) ShareRemoved
@@ -334,10 +332,9 @@ update msg model =
 
         ShareRemoved (Ok _) ->
             case model.selected of
+
                 Just pageId ->
-                    ( model
-                    , Cmd.perform (Db.listShares pageId) SharesLoaded
-                    )
+                    ( model, Cmd.perform (Db.listShares pageId) SharesLoaded )
 
                 Nothing ->
                     ( model, Cmd.none )
@@ -358,22 +355,30 @@ update msg model =
         -- regression around line 1126 of generated main.go.
         Tick ->
             case model.session of
+
                 Nothing ->
                     ( model, Cmd.none )
 
                 Just s ->
                     case model.selected of
+
                         Just pageId ->
                             ( model
                             , Cmd.batch
-                                [ Cmd.perform (Db.getPage pageId s.id s.email) PageContentReloaded
-                                , Cmd.perform (Db.listPages s.id s.email) PagesLoaded
-                                ]
+                                  [ Cmd.perform
+                                        (Db.getPage pageId s.id s.email)
+                                        PageContentReloaded
+                                  , Cmd.perform
+                                        (Db.listPages s.id s.email)
+                                        PagesLoaded
+                                  ]
                             )
 
                         Nothing ->
                             ( model
-                            , Cmd.perform (Db.listPages s.id s.email) PagesLoaded
+                            , Cmd.perform
+                                  (Db.listPages s.id s.email)
+                                  PagesLoaded
                             )
 
         PageContentReloaded (Ok (Just page)) ->
@@ -382,6 +387,7 @@ update msg model =
             -- and the remote content differs.
             if model.saveState == Saved && page.content /= model.draft then
                 ( { model | draft = page.content }, Cmd.none )
+
             else
                 ( model, Cmd.none )
 
@@ -389,13 +395,11 @@ update msg model =
             ( model, Cmd.none )
 
 
-
 -- Helpers ----------------------------------------------------------
-
-
 saveDraftTask : Model -> String -> Task Error Int
 saveDraftTask model draft =
     case ( model.session, model.selected ) of
+
         ( Just s, Just pageId ) ->
             Db.savePage pageId s.id s.email (titleFrom draft) draft
 
@@ -406,6 +410,7 @@ saveDraftTask model draft =
 loadSharesIfSelected : Maybe Int -> Cmd.Cmd Msg
 loadSharesIfSelected sel =
     case sel of
+
         Just pageId ->
             Cmd.perform (Db.listShares pageId) SharesLoaded
 
@@ -416,13 +421,14 @@ loadSharesIfSelected sel =
 titleFrom : String -> String
 titleFrom draft =
     case List.head (String.split "\n" draft) of
+
         Just line ->
             let
-                trimmed =
-                    String.trim line
+                trimmed = String.trim line
             in
                 if trimmed == "" then
                     "Untitled"
+
                 else
                     String.slice 0 60 trimmed
 
@@ -433,12 +439,13 @@ titleFrom draft =
 friendlyAuthError : Error -> String
 friendlyAuthError e =
     let
-        s =
-            Error.toString e
+        s = Error.toString e
     in
         if String.contains "UNIQUE" s || String.contains "unique" s then
             "That email is already registered. Try signing in."
+
         else if String.contains "wrong email or password" s then
             "Wrong email or password."
+
         else
             s
