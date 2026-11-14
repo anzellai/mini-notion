@@ -468,7 +468,7 @@ shareRow model session =
         , Ui.row
               [ Ui.width Ui.fill, Ui.spacing 8 ]
               [ Ui.el
-                    [ Ui.width (Ui.px 280) ]
+                    [ Ui.width (Ui.fill |> Ui.maximum 280) ]
                     (Input.email
                         []
                         { onChange = UpdateShareInput
