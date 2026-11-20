@@ -32,7 +32,7 @@ type PageView
 
 type alias Model =
     { -- Auth / routing
-      page : PageView
+      screen : PageView
     , session : Maybe Session
     , signInEmail : String
     , signInPassword : String
@@ -92,7 +92,7 @@ type Msg
 
 initialModel : Model
 initialModel =
-    { page = SignInView
+    { screen = SignInView
     , session = Nothing
     , signInEmail = ""
     , signInPassword = ""

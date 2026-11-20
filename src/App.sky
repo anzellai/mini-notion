@@ -72,7 +72,10 @@ init _ =
                     session =
                         { id = uid, email = email, role = "user", token = "" }
                 in
-                    ( { initialModel | session = Just session, page = AppView }
+                    ( { initialModel
+                          | session = Just session
+                          , screen = AppView
+                      }
                     , \_ -> Tick
                     )
     in

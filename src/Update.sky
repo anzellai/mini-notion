@@ -19,10 +19,10 @@ update msg model =
 
         -- Auth routing -------------------------------------------------
         NavigateSignIn ->
-            ( { model | page = SignInView, authError = "" }, Cmd.none )
+            ( { model | screen = SignInView, authError = "" }, Cmd.none )
 
         NavigateSignUp ->
-            ( { model | page = SignUpView, authError = "" }, Cmd.none )
+            ( { model | screen = SignUpView, authError = "" }, Cmd.none )
 
         UpdateSignInEmail v ->
             ( { model | signInEmail = v }, Cmd.none )
@@ -53,7 +53,7 @@ update msg model =
         SignedIn (Ok session) ->
             ( { model
                   | session = Just session
-                  , page = AppView
+                  , screen = AppView
                   , signInPassword = ""
                   , signInEmail = ""
               }
@@ -68,7 +68,7 @@ update msg model =
         SignedUp (Ok session) ->
             ( { model
                   | session = Just session
-                  , page = AppView
+                  , screen = AppView
                   , signUpPassword = ""
                   , signUpEmail = ""
               }
@@ -81,7 +81,7 @@ update msg model =
             )
 
         SignOut ->
-            ( { initialModel | page = SignInView }, Cmd.none )
+            ( { initialModel | screen = SignInView }, Cmd.none )
 
         -- Pages --------------------------------------------------------
         PagesLoaded (Ok pages) ->

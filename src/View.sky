@@ -111,7 +111,7 @@ errorFg =
 -- Top-level switch -------------------------------------------------
 view : Model -> Element Msg
 view model =
-    case model.page of
+    case model.screen of
 
         SignInView ->
             signInPage model
