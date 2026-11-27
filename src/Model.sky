@@ -1,10 +1,4 @@
-module Model exposing
-    ( SaveState(..)
-    , PageView(..)
-    , Model
-    , Msg(..)
-    , initialModel
-    )
+module Model exposing (SaveState(..), PageView(..), Model, Msg(..), initialModel)
 
 -- Model -- Sky.Live state for mini-Notion Part 2.
 --
@@ -17,18 +11,15 @@ import Sky.Core.Error as Error exposing (Error)
 import Auth exposing (Session)
 import Db
 
-
 type SaveState
     = Saved
     | Saving
     | SaveError String
 
-
 type PageView
     = SignInView
     | SignUpView
     | AppView
-
 
 type alias Model =
     { -- Auth / routing
@@ -52,7 +43,6 @@ type alias Model =
     -- UI banner
     , notice : String
     }
-
 
 type Msg
     = -- Auth
