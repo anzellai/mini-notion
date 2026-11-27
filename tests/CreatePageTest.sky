@@ -38,20 +38,19 @@ fanOut =
 -}
 scenario : Result Error ( List Int, List Int )
 scenario =
-    Db.initSchema
-        |> Task.andThen
-               (\_ ->
-                   Task.parallel (List.repeat fanOut (Db.createPage testOwner)))
-        |> Task.andThen
-               (\ids ->
-                   Db.listPages testOwner "nobody@example.invalid"
-                       |> Task.map (\pages -> ( ids, List.map .id pages )))
-        |> Task.andThen
-               (\( ids, seen ) ->
-                   Task.sequence
-                       (List.map (\p -> Db.deletePage p testOwner) seen)
-                       |> Task.map (\_ -> ( ids, seen )))
-        |> Task.run
+    Task.run createAndClean
+
+
+createAndClean : Task Error ( List Int, List Int )
+createAndClean =
+    let
+        _ <- Db.initSchema
+        ids <- Task.parallel (List.repeat fanOut (Db.createPage testOwner))
+        pages <- Db.listPages testOwner "nobody@example.invalid"
+        seen = List.map .id pages
+        _ <- Task.sequence (List.map (\p -> Db.deletePage p testOwner) seen)
+    in
+        Task.succeed ( ids, seen )
 
 
 tests : List Test

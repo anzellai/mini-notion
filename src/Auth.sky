@@ -59,83 +59,62 @@ register : String -> String -> Task Error Session
 register email password =
     let
         emailLower = String.toLower email
+        hash <- Task.fromResult (StdAuth.hashPassword password)
+        db <- StdDb.open "sqlite" dbPath
+        _ <-
+            StdDb.exec
+                db
+                "INSERT INTO users (email, password_hash) VALUES (?, ?)"
+                [ emailLower, hash ]
+        rows <-
+            StdDb.query
+                db
+                "SELECT id FROM users WHERE email = ? LIMIT 1"
+                [ emailLower ]
     in
-        case StdAuth.hashPassword password of
+        Task.succeed
+            (case List.head rows of
 
-            Err msg ->
-                Task.fail msg
+                Just row ->
+                    { id = parseInt (StdDb.getField "id" row)
+                    , email = emailLower
+                    , role = "user"
+                    , token = ""
+                    }
 
-            Ok hash ->
-                StdDb.open "sqlite" dbPath
-                    |> Task.andThen
-                           (\db ->
-                               StdDb.exec
-                                   db
-                                   "INSERT INTO users (email, password_hash) VALUES (?, ?)"
-                                   [ emailLower, hash ]
-                                   |> Task.andThen
-                                          (\_ ->
-                                              StdDb.query
-                                                  db
-                                                  "SELECT id FROM users WHERE email = ? LIMIT 1"
-                                                  [ emailLower ]))
-                    |> Task.map
-                           (\rows ->
-                               case List.head rows of
-
-                                   Just row ->
-                                       { id = parseInt (StdDb.getField "id" row)
-                                       , email = emailLower
-                                       , role = "user"
-                                       , token = ""
-                                       }
-
-                                   Nothing ->
-                                       { id = 0
-                                       , email = emailLower
-                                       , role = "user"
-                                       , token = ""
-                                       })
+                Nothing ->
+                    { id = 0, email = emailLower, role = "user", token = "" })
 
 
 login : String -> String -> Task Error Session
 login email password =
     let
         emailLower = String.toLower email
+        db <- StdDb.open "sqlite" dbPath
+        rows <-
+            StdDb.query
+                db
+                "SELECT id, password_hash, role FROM users WHERE email = ? LIMIT 1"
+                [ emailLower ]
     in
-        StdDb.open "sqlite" dbPath
-            |> Task.andThen
-                   (\db ->
-                       StdDb.query
-                           db
-                           "SELECT id, password_hash, role FROM users WHERE email = ? LIMIT 1"
-                           [ emailLower ])
-            |> Task.andThen
-                   (\rows ->
-                       case List.head rows of
+        case List.head rows of
 
-                           Nothing ->
-                               Task.fail Error.permissionDenied
+            Nothing ->
+                Task.fail Error.permissionDenied
 
-                           Just row ->
-                               let
-                                   hash = StdDb.getField "password_hash" row
-                               in
-                                   case StdAuth.verifyPassword password hash of
+            Just row ->
+                let
+                    hash = StdDb.getField "password_hash" row
+                    ok <-
+                        Task.fromResult (StdAuth.verifyPassword password hash)
+                in
+                    if ok then
+                        Task.succeed
+                            { id = parseInt (StdDb.getField "id" row)
+                            , email = emailLower
+                            , role = StdDb.getField "role" row
+                            , token = ""
+                            }
 
-                                       Err msg ->
-                                           Task.fail msg
-
-                                       Ok False ->
-                                           Task.fail Error.permissionDenied
-
-                                       Ok True ->
-                                           Task.succeed
-                                               { id =
-                                                   parseInt
-                                                       (StdDb.getField "id" row)
-                                               , email = emailLower
-                                               , role =
-                                                   StdDb.getField "role" row
-                                               , token = ""
-                                               })
+                    else
+                        Task.fail Error.permissionDenied

@@ -55,14 +55,14 @@ idxSharesPage =
 
 initSchema : Task Error ()
 initSchema =
-    StdDb.open "sqlite" dbPath
-        |> Task.andThen
-               (\db ->
-                   StdDb.execRaw db pagesSchema
-                       |> Task.andThen (\_ -> StdDb.execRaw db sharesSchema)
-                       |> Task.andThen (\_ -> StdDb.execRaw db idxSharesEmail)
-                       |> Task.andThen (\_ -> StdDb.execRaw db idxSharesPage))
-        |> Task.map (\_ -> ())
+    let
+        db <- StdDb.open "sqlite" dbPath
+        _ <- StdDb.execRaw db pagesSchema
+        _ <- StdDb.execRaw db sharesSchema
+        _ <- StdDb.execRaw db idxSharesEmail
+        _ <- StdDb.execRaw db idxSharesPage
+    in
+        Task.succeed ()
 
 -- Records ----------------------------------------------------------
 type alias Page =
